@@ -467,6 +467,107 @@ void CCID_NotifySlotChange(
     }
 }
 
+
+void CALLBACK_CCID_GetParameters(
+    uint8_t slot,
+    uint8_t seq,
+    struct rdr_to_pc_parameters_t0* responseGetParameters) {
+    furi_check(responseGetParameters);
+    furi_check(furi_hal_usb_ccid);
+
+    responseGetParameters->bMessageType = RDR_TO_PC_PARAMETERS;
+    responseGetParameters->bSlot = slot;
+    responseGetParameters->bSeq = seq;
+    responseGetParameters->dwLength =
+        sizeof(struct rdr_to_pc_parameters_t0) - sizeof(ccid_bulk_message_header_t);
+
+    if(slot == CCID_SLOT_INDEX) {
+        responseGetParameters->bError = CCID_ERROR_NOERROR;
+        if(furi_hal_usb_ccid->smartcard_inserted) {
+            // Return current parameters (T=0)
+            responseGetParameters->bProtocolNum = 0x00; // T=0
+            responseGetParameters->bmFindexDindex = 0x11; // Default values
+            responseGetParameters->bmTCCKST0 = 0x00;
+            responseGetParameters->bGuardTimeT0 = 0x00;
+            responseGetParameters->bWaitingIntegerT0 = 0x0A;
+            responseGetParameters->bClockStop = 0x00;
+            responseGetParameters->bStatus = CCID_COMMANDSTATUS_PROCESSEDWITHOUTERROR |
+                                             CCID_ICCSTATUS_PRESENTANDACTIVE;
+        } else {
+            responseGetParameters->bStatus = CCID_COMMANDSTATUS_PROCESSEDWITHOUTERROR |
+                                             CCID_ICCSTATUS_NOICCPRESENT;
+        }
+    } else {
+        responseGetParameters->bError = CCID_ERROR_SLOTNOTFOUND;
+        responseGetParameters->bStatus = CCID_COMMANDSTATUS_FAILED | CCID_ICCSTATUS_NOICCPRESENT;
+    }
+}
+
+void CALLBACK_CCID_ResetParameters(
+    uint8_t slot,
+    uint8_t seq,
+    struct rdr_to_pc_parameters_t0* responseResetParameters) {
+    furi_check(responseResetParameters);
+    furi_check(furi_hal_usb_ccid);
+
+    responseResetParameters->bMessageType = RDR_TO_PC_PARAMETERS;
+    responseResetParameters->bSlot = slot;
+    responseResetParameters->bSeq = seq;
+    responseResetParameters->dwLength =
+        sizeof(struct rdr_to_pc_parameters_t0) - sizeof(ccid_bulk_message_header_t);
+
+    if(slot == CCID_SLOT_INDEX) {
+        responseResetParameters->bError = CCID_ERROR_NOERROR;
+        if(furi_hal_usb_ccid->smartcard_inserted) {
+            // Reset to default parameters (T=0)
+            responseResetParameters->bProtocolNum = 0x00; // T=0
+            responseResetParameters->bmFindexDindex = 0x11; // Default Fi=372, Di=1
+            responseResetParameters->bmTCCKST0 = 0x00;
+            responseResetParameters->bGuardTimeT0 = 0x00;
+            responseResetParameters->bWaitingIntegerT0 = 0x0A; // Default WI
+            responseResetParameters->bClockStop = 0x00;
+            responseResetParameters->bStatus = CCID_COMMANDSTATUS_PROCESSEDWITHOUTERROR |
+                                               CCID_ICCSTATUS_PRESENTANDACTIVE;
+        } else {
+            responseResetParameters->bStatus = CCID_COMMANDSTATUS_PROCESSEDWITHOUTERROR |
+                                               CCID_ICCSTATUS_NOICCPRESENT;
+        }
+    } else {
+        responseResetParameters->bError = CCID_ERROR_SLOTNOTFOUND;
+        responseResetParameters->bStatus = CCID_COMMANDSTATUS_FAILED | CCID_ICCSTATUS_NOICCPRESENT;
+    }
+}
+
+void CALLBACK_CCID_CommandNotSupported(
+    uint8_t messageType,
+    uint8_t slot,
+    uint8_t seq,
+    struct rdr_to_pc_slot_status* responseSlotStatus) {
+    furi_check(responseSlotStatus);
+    furi_check(furi_hal_usb_ccid);
+
+    UNUSED(messageType);
+
+    responseSlotStatus->bMessageType = RDR_TO_PC_SLOTSTATUS;
+    responseSlotStatus->bSlot = slot;
+    responseSlotStatus->bSeq = seq;
+    responseSlotStatus->bClockStatus = 0;
+    responseSlotStatus->dwLength = 0;
+
+    if(slot == CCID_SLOT_INDEX) {
+        responseSlotStatus->bError = CCID_ERROR_CMD_NOT_SUPPORTED;
+        if(furi_hal_usb_ccid->smartcard_inserted) {
+            responseSlotStatus->bStatus = CCID_COMMANDSTATUS_FAILED |
+                                          CCID_ICCSTATUS_PRESENTANDACTIVE;
+        } else {
+            responseSlotStatus->bStatus = CCID_COMMANDSTATUS_FAILED | CCID_ICCSTATUS_NOICCPRESENT;
+        }
+    } else {
+        responseSlotStatus->bError = CCID_ERROR_SLOTNOTFOUND;
+        responseSlotStatus->bStatus = CCID_COMMANDSTATUS_FAILED | CCID_ICCSTATUS_NOICCPRESENT;
+    }
+}
+
 void furi_hal_usb_ccid_insert_smartcard(void) {
     furi_check(furi_hal_usb_ccid);
     furi_thread_flags_set(
@@ -638,6 +739,71 @@ static int32_t ccid_worker(void* context) {
                     furi_hal_usb_ccid->send_buffer, sizeof(struct rdr_to_pc_parameters_t0));
 
                 furi_hal_usb_ccid->receive_buffer_data_index = 0;
+
+            } else if(message->bMessageType == PC_TO_RDR_GETPARAMETERS) {
+                struct pc_to_rdr_get_parameters* requestGetParameters =
+                    (struct pc_to_rdr_get_parameters*)message; //-V641
+                struct rdr_to_pc_parameters_t0* responseGetParameters =
+                    (struct rdr_to_pc_parameters_t0*)&furi_hal_usb_ccid->send_buffer; //-V641
+
+                CALLBACK_CCID_GetParameters(
+                    requestGetParameters->bSlot,
+                    requestGetParameters->bSeq,
+                    responseGetParameters);
+
+                ccid_send_response(
+                    furi_hal_usb_ccid->send_buffer, sizeof(struct rdr_to_pc_parameters_t0));
+
+                furi_hal_usb_ccid->receive_buffer_data_index = 0;
+
+            } else if(message->bMessageType == PC_TO_RDR_RESETPARAMETERS) {
+                struct pc_to_rdr_reset_parameters* requestResetParameters =
+                    (struct pc_to_rdr_reset_parameters*)message; //-V641
+                struct rdr_to_pc_parameters_t0* responseResetParameters =
+                    (struct rdr_to_pc_parameters_t0*)&furi_hal_usb_ccid->send_buffer; //-V641
+
+                CALLBACK_CCID_ResetParameters(
+                    requestResetParameters->bSlot,
+                    requestResetParameters->bSeq,
+                    responseResetParameters);
+
+                ccid_send_response(
+                    furi_hal_usb_ccid->send_buffer, sizeof(struct rdr_to_pc_parameters_t0));
+
+                furi_hal_usb_ccid->receive_buffer_data_index = 0;
+
+            } else if(
+                message->bMessageType == PC_TO_RDR_ESCAPE ||
+                message->bMessageType == PC_TO_RDR_ICCCLOCK ||
+                message->bMessageType == PC_TO_RDR_T0APDU ||
+                message->bMessageType == PC_TO_RDR_SECURE ||
+                message->bMessageType == PC_TO_RDR_MECHANICAL ||
+                message->bMessageType == PC_TO_RDR_ABORT ||
+                message->bMessageType == PC_TO_RDR_SETDATARATEANDCLOCKFREQUENCY) {
+                // All unsupported commands return CMD_NOT_SUPPORTED via SlotStatus
+                struct rdr_to_pc_slot_status* responseSlotStatus =
+                    (struct rdr_to_pc_slot_status*)&furi_hal_usb_ccid->send_buffer; //-V641
+
+                CALLBACK_CCID_CommandNotSupported(
+                    message->bMessageType, message->bSlot, message->bSeq, responseSlotStatus);
+
+                ccid_send_response(
+                    furi_hal_usb_ccid->send_buffer, sizeof(struct rdr_to_pc_slot_status));
+
+                furi_hal_usb_ccid->receive_buffer_data_index = 0;
+
+            } else {
+                // Unknown message type - return CMD_NOT_SUPPORTED
+                struct rdr_to_pc_slot_status* responseSlotStatus =
+                    (struct rdr_to_pc_slot_status*)&furi_hal_usb_ccid->send_buffer; //-V641
+
+                CALLBACK_CCID_CommandNotSupported(
+                    message->bMessageType, message->bSlot, message->bSeq, responseSlotStatus);
+
+                ccid_send_response(
+                    furi_hal_usb_ccid->send_buffer, sizeof(struct rdr_to_pc_slot_status));
+
+                furi_hal_usb_ccid->receive_buffer_data_index = 0;
             }
         } else if(flags & WorkerEvtStop) {
             break;
@@ -715,6 +881,10 @@ static usbd_respond ccid_control(usbd_device* dev, usbd_ctlreq* req, usbd_rqc_ca
         case CCID_GET_CLOCK_FREQUENCIES:
             dev->status.data_ptr = (void*)&(ccid_cfg_desc.intf_0.ccid_desc.dwDefaultClock);
             dev->status.data_count = sizeof(ccid_cfg_desc.intf_0.ccid_desc.dwDefaultClock);
+            return usbd_ack;
+        case CCID_GET_DATA_RATES:
+            dev->status.data_ptr = (void*)&(ccid_cfg_desc.intf_0.ccid_desc.dwDataRate);
+            dev->status.data_count = sizeof(ccid_cfg_desc.intf_0.ccid_desc.dwDataRate);
             return usbd_ack;
         default:
             return usbd_fail;
