@@ -27,6 +27,14 @@ This document provides a comprehensive analysis of the USB CCID (Chip Card Inter
 
 ## Changelog
 
+### December 14, 2025 - Extended APDU Support
+- ✅ **Implemented Extended APDU support** - Lc/Le up to 2048 bytes
+- ✅ **Updated CCID buffer size** to 2055 bytes (header + 2048 data)
+- ✅ **Updated descriptor** to advertise `ShortExtendedAPDU` exchange level
+- ✅ **Extended APDU parsing** - handles Case 2E, 3E, 4E formats
+- ✅ **Added `iso7816_is_extended_apdu()` helper function**
+- ✅ **Extended APDU tests** - 300 and 512 byte echo tests
+
 ### December 14, 2025 - Message Validation
 - ✅ **Added message length validation** - prevents buffer overflows
 - ✅ **Added reserved field (RFU) validation** - returns BAD_ABRFU errors
@@ -80,7 +88,7 @@ The ISO7816 implementation provides smart card protocol support as defined in IS
 | `iso7816_response.h` | Response status codes | ⚠️ Partial |
 | `iso7816_response.c` | Sets SW1/SW2 response | ✅ Working |
 | `iso7816_t0_apdu.h` | T=0 APDU structures | ✅ Working |
-| `iso7816_t0_apdu.c` | APDU parsing/writing | ⚠️ Short APDU only |
+| `iso7816_t0_apdu.c` | APDU parsing/writing | ✅ Short + Extended |
 | `iso7816_handler.h` | Handler type/interface | ❌ **Missing** |
 | `iso7816_handler.c` | Handler implementation | ❌ **Missing** |
 
@@ -178,29 +186,29 @@ typedef struct {
 
 **Current Capabilities**:
 - ✅ Case 1: No data, no response (4 bytes: CLA INS P1 P2)
-- ✅ Case 2: No data, response expected (5 bytes: CLA INS P1 P2 Le)
-- ✅ Case 3: Data, no response (5+Lc bytes: CLA INS P1 P2 Lc Data)
-- ✅ Case 4: Data with response (6+Lc bytes: CLA INS P1 P2 Lc Data Le)
-- ⚠️ Short APDU only (Lc/Le max 255)
+- ✅ Case 2S: No data, response expected (5 bytes: CLA INS P1 P2 Le)
+- ✅ Case 3S: Data, no response (5+Lc bytes: CLA INS P1 P2 Lc Data)
+- ✅ Case 4S: Data with response (6+Lc bytes: CLA INS P1 P2 Lc Data Le)
+- ✅ Case 2E: Extended Le only (7 bytes: CLA INS P1 P2 00 Le1 Le2)
+- ✅ Case 3E: Extended Lc (7+Lc bytes: CLA INS P1 P2 00 Lc1 Lc2 Data)
+- ✅ Case 4E: Extended Lc + Le (9+Lc bytes: CLA INS P1 P2 00 Lc1 Lc2 Data Le1 Le2)
+- ✅ Short APDU (Lc/Le max 255)
+- ✅ Extended APDU (Lc/Le up to 2048 bytes)
 
 **Missing per ISO 7816-4**:
 
 | Feature | Description | Status |
 |---------|-------------|--------|
-| Extended APDU | Lc/Le up to 65535 | ❌ Missing |
-| Extended Le=0x0000 | Means 65536 | ❌ Missing |
-| 3-byte Lc encoding | 0x00 + 2-byte length | ❌ Missing |
+| Extended Le=0x0000 | Means 65536 bytes | ⚠️ Limited to 2048 |
 | Command chaining | CLA bit 4 set | ❌ Missing |
 | Secure messaging | CLA bits 2-3 | ❌ Missing |
 | Logical channels | CLA bits 0-1 | ❌ Missing |
 
-**Proposed Extended APDU Parsing**:
+**Extended APDU Detection**:
 ```c
-// Extended APDU detection (first Lc byte = 0x00)
-if(pc_to_reader_datablock_len > 5 && pc_to_reader_datablock[4] == 0x00) {
-    // Extended Lc: bytes 5-6 contain actual length
-    command->Lc = (pc_to_reader_datablock[5] << 8) | pc_to_reader_datablock[6];
-    // Extended Le would be last 2 bytes if present
+// Extended APDU detection (first Lc byte = 0x00 and length > 5)
+bool iso7816_is_extended_apdu(const uint8_t* data, uint32_t len) {
+    return len > 5 && data[4] == 0x00;
 }
 ```
 
@@ -317,6 +325,7 @@ if(pc_to_reader_datablock_len > 5 && pc_to_reader_datablock[4] == 0x00) {
 ### Protocol Support
 - ✅ T=0 protocol
 - ✅ Short APDU (up to 255 bytes)
+- ✅ Extended APDU (up to 2048 bytes)
 - ✅ Basic ISO7816-3/4 APDU handling
 - ✅ Single slot support (slot 0)
 
@@ -331,13 +340,13 @@ if(pc_to_reader_datablock_len > 5 && pc_to_reader_datablock[4] == 0x00) {
 .dwDataRate = 307200                 // 307.2 kbps
 .dwMaxDataRate = 307200              // 307.2 kbps
 .dwMaxIFSD = 2038                    // Maximum IFSD
-.dwFeatures = 0x00040042             // Auto config, activation, voltage
+.dwFeatures = 0x00040042             // Auto config, activation, voltage, Short+Extended APDU
 .dwMaxCCIDMessageLength = 0x0c00     // 3072 bytes max
 .bMaxCCIDBusySlots = 1               // Single concurrent operation
 ```
 
 ### Features Advertised
-- ✅ Exchange Level: Short APDU
+- ✅ Exchange Level: Short + Extended APDU
 - ✅ Automatic Parameter Configuration
 - ✅ Automatic ICC Activation
 - ✅ Automatic Voltage Selection
@@ -461,19 +470,20 @@ struct rdr_to_pc_parameters_t1 { ... }
 But no T=1 protocol handler exists.
 
 #### Extended APDU
-**Status**: ❌ Not Implemented
+**Status**: ✅ Implemented
 
-Current limit: 255 bytes (Short APDU only)
+Current limit: 2048 bytes (practical limit for embedded device)
 
-The descriptor could claim Extended APDU support:
-```c
-.dwFeatures |= CCID_Features_ExchangeLevel_ShortExtendedAPDU
-```
+Implementation includes:
+- ✅ Extended length APDU parsing (Case 2E, 3E, 4E)
+- ✅ Extended Le handling (2-byte Le encoding)
+- ✅ Extended Lc handling (0x00 marker + 2-byte Lc)
+- ✅ Buffer size: 2048 bytes (CCID_EXTENDED_APDU_SIZE)
+- ✅ Descriptor advertises `CCID_Features_ExchangeLevel_ShortExtendedAPDU`
 
-But implementation would need:
-- Extended length APDU parsing (Lc up to 65535 bytes)
-- Extended Le handling
-- Larger buffer allocation
+Tested with:
+- 300-byte echo test
+- 512-byte echo test
 
 #### Character Exchange Level
 **Status**: ❌ Not Implemented
@@ -744,8 +754,8 @@ sudo .venv/bin/python3 ccid_test.py
 
 | Test Suite | Description | Tests |
 |------------|-------------|-------|
-| `ccid_test.py` | Raw USB CCID protocol tests | 44 tests |
-| `iso7816_test.py` | PC/SC APDU-level tests | 6 tests |
+| `ccid_test.py` | Raw USB CCID protocol tests | 60 tests |
+| `iso7816_test.py` | PC/SC APDU-level tests | 9 tests |
 
 ### Current Test Coverage
 - ✅ All PC_to_RDR message types
@@ -756,10 +766,10 @@ sudo .venv/bin/python3 ccid_test.py
 - ✅ Power on/off cycles
 - ✅ Basic APDU exchange
 - ✅ Short APDU tests (up to 0xF0 bytes)
+- ✅ Extended APDU tests (300, 512 bytes)
+- ✅ Message validation (RFU fields, length overflow)
 
 ### Missing Test Coverage
-- ❌ Message validation edge cases (bad length, invalid RFU)
-- ❌ Boundary condition testing
 - ❌ Protocol parameter negotiation
 - ❌ Multi-message sequences
 - ❌ Timeout handling
@@ -778,7 +788,7 @@ sudo .venv/bin/python3 ccid_test.py
 | **Control Requests** | � Complete (100%) | All 3 control requests implemented |
 | **Error Handling** | � Good (100%) | All 28 standard error codes defined |
 | **Protocol Support** | 🟡 Partial (50%) | T=0 fully supported, no T=1 |
-| **APDU Support** | 🟢 Good | Short APDU working |
+| **APDU Support** | 🟢 Good | Short + Extended APDU working (up to 2048 bytes) |
 | **Descriptors** | 🟢 Good | Proper USB descriptors |
 | **Endpoints** | 🟡 Partial (67%) | Missing optional Interrupt-IN |
 | **Overall** | � **~75%** | **Fully functional, properly handles unsupported features** |
@@ -830,11 +840,12 @@ Would require:
 
 ### Likely Compatible
 - Most software expecting basic CCID T=0 reader
-- Applications using Short APDU only
+- Applications using Short APDU
+- Applications using Extended APDU up to 2048 bytes
 
 ### May Have Issues
 - Software requiring T=1 protocol
-- Applications using Extended APDU
+- Applications requiring Extended APDU > 2048 bytes
 - Software expecting comprehensive error reporting
 - Tools relying on interrupt endpoint notifications
 

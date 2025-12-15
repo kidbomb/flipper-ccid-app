@@ -50,12 +50,12 @@ void iso7816_xfr_datablock_callback(
     ISO7816_Command_APDU* command_apdu = (ISO7816_Command_APDU*)command_apdu_buffer;
 
     uint8_t result = iso7816_read_command_apdu(
-        command_apdu, pc_to_reader_datablock, pc_to_reader_datablock_len, CCID_SHORT_APDU_SIZE);
+        command_apdu, pc_to_reader_datablock, pc_to_reader_datablock_len, CCID_EXTENDED_APDU_SIZE);
 
     if(result == ISO7816_READ_COMMAND_APDU_OK) {
         handler->iso7816_process_command(command_apdu, response_apdu);
 
-        furi_assert(response_apdu->DataLen < CCID_SHORT_APDU_SIZE);
+        furi_assert(response_apdu->DataLen <= CCID_EXTENDED_APDU_SIZE);
     } else if(result == ISO7816_READ_COMMAND_APDU_ERROR_WRONG_LE) {
         iso7816_set_response(response_apdu, ISO7816_RESPONSE_WRONG_LE);
     } else if(result == ISO7816_READ_COMMAND_APDU_ERROR_WRONG_LENGTH) {
@@ -68,8 +68,8 @@ void iso7816_xfr_datablock_callback(
 Iso7816Handler* iso7816_handler_alloc() {
     iso7816_handler = malloc(sizeof(Iso7816Handler));
 
-    command_apdu_buffer = malloc(sizeof(ISO7816_Command_APDU) + CCID_SHORT_APDU_SIZE);
-    response_apdu_buffer = malloc(sizeof(ISO7816_Response_APDU) + CCID_SHORT_APDU_SIZE);
+    command_apdu_buffer = malloc(sizeof(ISO7816_Command_APDU) + CCID_EXTENDED_APDU_SIZE);
+    response_apdu_buffer = malloc(sizeof(ISO7816_Response_APDU) + CCID_EXTENDED_APDU_SIZE);
 
     ccid_callbacks = malloc(sizeof(CcidCallbacks));
     ccid_callbacks->icc_power_on_callback = iso7816_icc_power_on_callback;

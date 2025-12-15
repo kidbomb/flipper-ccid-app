@@ -142,6 +142,58 @@ def main():
         max_apdu,
     )
 
+    # Extended APDU tests
+    print("\n[TEST] Extended APDU Tests")
+    
+    # Case 2E: Extended Le only (no data, expect response)
+    # Format: CLA INS P1 P2 00 Le1 Le2
+    # We request 256 bytes (0x0100) - but INS 0x02 only returns 2 bytes
+    test_apdu(
+        connection,
+        "INS 0x02 - Extended Le (Case 2E)",
+        [0x01, 0x02, 0x00, 0x00, 0x00, 0x01, 0x00],  # Le = 0x0100 = 256
+        0x90,
+        0x00,
+        [0x62, 0x63],  # Still only returns 2 bytes
+    )
+    
+    # Case 4E: Extended Lc and Le (data in, data out)
+    # Format: CLA INS P1 P2 00 Lc1 Lc2 Data... Le1 Le2
+    extended_data_len = 300  # > 255, requires extended APDU
+    extended_data = [(i % 256) for i in range(extended_data_len)]
+    
+    lc_hi = (extended_data_len >> 8) & 0xFF
+    lc_lo = extended_data_len & 0xFF
+    le_hi = (extended_data_len >> 8) & 0xFF
+    le_lo = extended_data_len & 0xFF
+    
+    test_apdu(
+        connection,
+        f"INS 0x04 - Extended APDU echo ({extended_data_len} bytes, Case 4E)",
+        [0x01, 0x04, 0x00, 0x00, 0x00, lc_hi, lc_lo] + extended_data + [le_hi, le_lo],
+        0x90,
+        0x00,
+        extended_data,
+    )
+    
+    # Test with 512 bytes - well within our 2048 limit
+    extended_data_len = 512
+    extended_data = [(i % 256) for i in range(extended_data_len)]
+    
+    lc_hi = (extended_data_len >> 8) & 0xFF
+    lc_lo = extended_data_len & 0xFF
+    le_hi = (extended_data_len >> 8) & 0xFF
+    le_lo = extended_data_len & 0xFF
+    
+    test_apdu(
+        connection,
+        f"INS 0x04 - Extended APDU echo ({extended_data_len} bytes)",
+        [0x01, 0x04, 0x00, 0x00, 0x00, lc_hi, lc_lo] + extended_data + [le_hi, le_lo],
+        0x90,
+        0x00,
+        extended_data,
+    )
+
     # Print summary
     total = passed + failed
     print("\n" + "=" * 60)

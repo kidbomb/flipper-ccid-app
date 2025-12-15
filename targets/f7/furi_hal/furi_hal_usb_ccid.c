@@ -20,8 +20,8 @@
 #define CCID_TOTAL_SLOTS (1)
 #define CCID_SLOT_INDEX  (0)
 
-#define CCID_DATABLOCK_SIZE \
-    (4 + 1 + CCID_SHORT_APDU_SIZE + 1) //APDU Header + Lc + Short APDU size + Le
+// Extended APDU data block size: Header(4) + Lc(3) + Data(2048) + Le(2)
+#define CCID_DATABLOCK_SIZE (4 + 3 + CCID_EXTENDED_APDU_SIZE + 2)
 
 #define ENDPOINT_DIR_IN        (0x80)
 #define ENDPOINT_DIR_OUT       (0x00)
@@ -149,7 +149,7 @@ static const struct CcidConfigDescriptor ccid_cfg_desc = {
                  .dwMaxIFSD = 254,
                  .dwSynchProtocols = 0,
                  .dwMechanical = 0,
-                 .dwFeatures = CCID_Features_ExchangeLevel_ShortAPDU |
+                 .dwFeatures = CCID_Features_ExchangeLevel_ShortExtendedAPDU |
                                CCID_Features_Auto_ParameterConfiguration |
                                CCID_Features_Auto_ICCActivation |
                                CCID_Features_Auto_VoltageSelection,
