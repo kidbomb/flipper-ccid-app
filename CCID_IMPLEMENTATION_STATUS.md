@@ -72,13 +72,10 @@ This document provides a comprehensive analysis of the USB CCID (Chip Card Inter
 ---
 
 ## ISO7816 Module Analysis
-- `applications/debug/ccid_test/client/ccid_client.py` - Python test client
-
----
-
-## ISO7816 Module Analysis
 
 The ISO7816 implementation provides smart card protocol support as defined in ISO/IEC 7816-3 and 7816-4.
+
+> **📖 Detailed Implementation Guide**: See [ISO7816_IMPLEMENTATION_GUIDE.md](./ISO7816_IMPLEMENTATION_GUIDE.md) for comprehensive command specifications, status codes, and implementation examples based on ISO/IEC 7816-4:2005.
 
 ### Module Files
 
@@ -89,132 +86,16 @@ The ISO7816 implementation provides smart card protocol support as defined in IS
 | `iso7816_response.c` | Sets SW1/SW2 response | ✅ Working |
 | `iso7816_t0_apdu.h` | T=0 APDU structures | ✅ Working |
 | `iso7816_t0_apdu.c` | APDU parsing/writing | ✅ Short + Extended |
-| `iso7816_handler.h` | Handler type/interface | ❌ **Missing** |
-| `iso7816_handler.c` | Handler implementation | ❌ **Missing** |
 
-### Missing Handler Module
+### Current APDU Capabilities
 
-The `ccid_test_app.c` references a handler module that does not exist:
+- ✅ Case 1: No data, no response (4 bytes)
+- ✅ Case 2S/2E: No data, response expected (short/extended)
+- ✅ Case 3S/3E: Data, no response (short/extended)
+- ✅ Case 4S/4E: Data with response (short/extended)
+- ✅ Extended APDU support (Lc/Le up to 2048 bytes)
 
-```c
-#include "iso7816/iso7816_handler.h"
-// ...
-app->iso7816_handler = iso7816_handler_alloc();
-app->iso7816_handler->iso7816_answer_to_reset = iso7816_answer_to_reset;
-app->iso7816_handler->iso7816_process_command = iso7816_process_command;
-// ...
-iso7816_handler_set_usb_ccid_callbacks();
-iso7816_handler_free(app->iso7816_handler);
-```
-
-**Expected Functions** (not implemented):
-- `iso7816_handler_alloc()` - Allocate handler context
-- `iso7816_handler_free()` - Free handler context
-- `iso7816_handler_set_usb_ccid_callbacks()` - Register with CCID HAL
-- `iso7816_handler_reset_usb_ccid_callbacks()` - Unregister from CCID HAL
-
-### ATR Implementation (`iso7816_atr.h`)
-
-**Current Structure** (2 bytes only):
-```c
-typedef struct {
-    uint8_t TS;  // Initial character (0x3B = direct, 0x3F = inverse)
-    uint8_t T0;  // Format byte
-} Iso7816Atr;
-```
-
-**Missing per ISO 7816-3**:
-
-| Component | Description | Status |
-|-----------|-------------|--------|
-| TS | Initial character | ✅ Present |
-| T0 | Format byte | ✅ Present |
-| TA1-TAn | Interface bytes (clock rate, Fi/Di) | ❌ Missing |
-| TB1-TBn | Interface bytes (voltage, current) | ❌ Missing |
-| TC1-TCn | Interface bytes (guard time, WI) | ❌ Missing |
-| TD1-TDn | Interface bytes (protocol type) | ❌ Missing |
-| T1-T15 | Historical bytes (app info) | ❌ Missing |
-| TCK | Check byte | ❌ Missing |
-
-**Proposed Enhanced Structure**:
-```c
-typedef struct {
-    uint8_t TS;                    // Initial character
-    uint8_t T0;                    // Format byte (Y1 nibble + K)
-    uint8_t interface_bytes[32];   // TA, TB, TC, TD bytes
-    uint8_t interface_bytes_len;   // Number of interface bytes
-    uint8_t historical_bytes[15];  // Historical bytes (max 15)
-    uint8_t historical_bytes_len;  // Number of historical bytes (K from T0)
-    uint8_t TCK;                   // Check byte (XOR of T0 to TCK-1)
-    bool has_tck;                  // True if TCK is present
-} Iso7816Atr;
-```
-
-### Response Codes (`iso7816_response.h`)
-
-**Currently Defined** (7 codes):
-```c
-#define ISO7816_RESPONSE_OK                        0x9000
-#define ISO7816_RESPONSE_WRONG_LENGTH              0x6700
-#define ISO7816_RESPONSE_WRONG_PARAMETERS_P1_P2    0x6A00
-#define ISO7816_RESPONSE_WRONG_LE                  0x6C00
-#define ISO7816_RESPONSE_INSTRUCTION_NOT_SUPPORTED 0x6D00
-#define ISO7816_RESPONSE_CLASS_NOT_SUPPORTED       0x6E00
-#define ISO7816_RESPONSE_INTERNAL_EXCEPTION        0x6F00
-```
-
-**Missing per ISO 7816-4**:
-
-| Category | Code Range | Examples | Status |
-|----------|------------|----------|--------|
-| Normal processing | `0x9000` | Success | ✅ Present |
-| Warning - NV unchanged | `0x62xx` | Data may be corrupted | ❌ Missing |
-| Warning - NV changed | `0x63xx` | Counter reached | ❌ Missing |
-| Execution error - NV unchanged | `0x64xx` | Memory failure | ❌ Missing |
-| Execution error - NV changed | `0x65xx` | Write error | ❌ Missing |
-| Security errors | `0x6982-6984` | Security not satisfied | ❌ Missing |
-| Wrong length | `0x6700` | Lc/Le error | ✅ Present |
-| Function not supported | `0x68xx` | Logical channel error | ❌ Missing |
-| Command not allowed | `0x69xx` | Command incompatible | ❌ Missing |
-| Wrong parameters | `0x6Axx` | Incorrect P1-P2 | ✅ Partial |
-| Wrong Le | `0x6Cxx` | Expected length | ✅ Present |
-| Instruction not supported | `0x6D00` | Unknown INS | ✅ Present |
-| Class not supported | `0x6E00` | Unknown CLA | ✅ Present |
-| Internal error | `0x6F00` | Unspecified error | ✅ Present |
-
-### APDU Parsing (`iso7816_t0_apdu.c`)
-
-**Current Capabilities**:
-- ✅ Case 1: No data, no response (4 bytes: CLA INS P1 P2)
-- ✅ Case 2S: No data, response expected (5 bytes: CLA INS P1 P2 Le)
-- ✅ Case 3S: Data, no response (5+Lc bytes: CLA INS P1 P2 Lc Data)
-- ✅ Case 4S: Data with response (6+Lc bytes: CLA INS P1 P2 Lc Data Le)
-- ✅ Case 2E: Extended Le only (7 bytes: CLA INS P1 P2 00 Le1 Le2)
-- ✅ Case 3E: Extended Lc (7+Lc bytes: CLA INS P1 P2 00 Lc1 Lc2 Data)
-- ✅ Case 4E: Extended Lc + Le (9+Lc bytes: CLA INS P1 P2 00 Lc1 Lc2 Data Le1 Le2)
-- ✅ Short APDU (Lc/Le max 255)
-- ✅ Extended APDU (Lc/Le up to 2048 bytes)
-
-**Missing per ISO 7816-4**:
-
-| Feature | Description | Status |
-|---------|-------------|--------|
-| Extended Le=0x0000 | Means 65536 bytes | ⚠️ Limited to 2048 |
-| Command chaining | CLA bit 4 set | ❌ Missing |
-| Secure messaging | CLA bits 2-3 | ❌ Missing |
-| Logical channels | CLA bits 0-1 | ❌ Missing |
-
-**Extended APDU Detection**:
-```c
-// Extended APDU detection (first Lc byte = 0x00 and length > 5)
-bool iso7816_is_extended_apdu(const uint8_t* data, uint32_t len) {
-    return len > 5 && data[4] == 0x00;
-}
-```
-
-### Test Commands (`ccid_test_app_commands.c`)
-
-**Currently Implemented** (CLA=0x01, custom test class):
+### Test Commands (CLA=0x01)
 
 | INS | Description | Command | Response |
 |-----|-------------|---------|----------|
@@ -223,56 +104,19 @@ bool iso7816_is_extended_apdu(const uint8_t* data, uint32_t len) {
 | 0x03 | Send 2 bytes | `01 03 00 00 02 CA FE` | SW=9000 |
 | 0x04 | Echo data | `01 04 00 00 Lc Data Le` | Data echoed, SW=9000 |
 
-**Missing Standard Commands**:
+### Missing Standard Commands
 
-| CLA | INS | Name | Description | Status |
-|-----|-----|------|-------------|--------|
-| 0x00 | 0xA4 | SELECT | Select file/application | ❌ Missing |
-| 0x00 | 0xB0 | READ BINARY | Read binary data | ❌ Missing |
-| 0x00 | 0xB2 | READ RECORD | Read record data | ❌ Missing |
-| 0x00 | 0xCA | GET DATA | Get data object | ❌ Missing |
-| 0x00 | 0xC0 | GET RESPONSE | Get remaining response data | ❌ Missing |
-| 0x00 | 0x20 | VERIFY | Verify PIN | ❌ Missing |
-| 0x00 | 0x84 | GET CHALLENGE | Get random number | ❌ Missing |
+For detailed implementation specifications, see the [ISO7816 Implementation Guide](./ISO7816_IMPLEMENTATION_GUIDE.md).
 
-### ISO7816 Implementation Priorities
-
-#### 🔴 High Priority
-
-1. **Create Missing Handler Module**
-   - Implement `iso7816_handler.h` and `iso7816_handler.c`
-   - Bridge between CCID HAL and ISO7816 processing
-   - Required for `ccid_test_app.c` to compile
-
-2. **Enhance ATR Structure**
-   - Support variable-length ATR
-   - Add interface bytes parsing
-   - Calculate TCK checksum
-   - Allow application-specific historical bytes
-
-3. **Add More Response Codes**
-   - Security status codes (`0x69xx`)
-   - File not found (`0x6A82`)
-   - Wrong data (`0x6A80`)
-
-#### 🟡 Medium Priority
-
-4. **Extended APDU Support**
-   - Parse 3-byte Lc encoding
-   - Handle extended Le
-   - Larger buffer allocation
-
-5. **Standard Commands**
-   - Implement SELECT (0xA4)
-   - Implement GET RESPONSE (0xC0)
-   - Basic file system emulation
-
-#### 🟢 Low Priority
-
-6. **Advanced Features**
-   - Command chaining
-   - Secure messaging
-   - Logical channels
+| CLA | INS | Name | Description | Priority |
+|-----|-----|------|-------------|----------|
+| 0x00 | 0xA4 | SELECT | Select file/application | 🔴 High |
+| 0x00 | 0xC0 | GET RESPONSE | Get remaining response data | 🔴 High |
+| 0x00 | 0xB0 | READ BINARY | Read binary data | 🟡 Medium |
+| 0x00 | 0xB2 | READ RECORD | Read record data | 🟡 Medium |
+| 0x00 | 0xCA | GET DATA | Get data object | 🟡 Medium |
+| 0x00 | 0x20 | VERIFY | Verify PIN | 🟡 Medium |
+| 0x00 | 0x84 | GET CHALLENGE | Get random number |  Low |
 
 ---
 
