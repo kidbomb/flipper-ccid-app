@@ -1,208 +1,199 @@
 #!/usr/bin/env python3
 """
-ISO7816 APDU-level test client for Flipper Zero USB CCID implementation.
+ISO7816 APDU-level test suite for Flipper Zero USB CCID implementation.
 
 This test suite tests the ISO7816 APDU layer using the PC/SC abstraction,
-as opposed to the CCID-level tests in ccid_test.py which use raw USB communication.
+as opposed to the CCID-level tests which use raw USB communication.
 
 Requirements:
-    pip install pyscard
+    pip install pyscard pytest
 
 Usage:
-    python iso7816_test.py
+    pytest iso7816_test.py -v
 
 Reference: ISO/IEC 7816-4
 """
 
+import pytest
 from smartcard.System import readers
-
-# Test counters
-passed = 0
-failed = 0
+from smartcard.Exceptions import NoCardException, CardConnectionException
 
 
-def test_apdu(connection, test_name, apdu, expected_sw1, expected_sw2, expected_data):
-    global passed, failed
-    
-    data, sw1, sw2 = connection.transmit(apdu)
-    failures = []
+# =============================================================================
+# Fixtures
+# =============================================================================
 
-    if sw1 != expected_sw1:
-        failures.append(f"SW1: Expected {expected_sw1:02X}, actual {sw1:02X}")
-
-    if sw2 != expected_sw2:
-        failures.append(f"SW2: Expected {expected_sw2:02X}, actual {sw2:02X}")
-
-    if len(data) != len(expected_data):
-        failures.append(f"Data length: Expected {len(expected_data)}, actual {len(data)}")
-    elif len(data) > 0:
-        if data != expected_data:
-            failures.append(f"Data: Expected {expected_data}, actual {data}")
-
-    if len(failures) > 0:
-        failed += 1
-        print(f"  ❌ FAIL: {test_name}")
-        for failure in failures:
-            print(f"         {failure}")
-    else:
-        passed += 1
-        print(f"  ✅ PASS: {test_name}")
-
-
-def main():
-    global passed, failed
-    
-    print("=" * 60)
-    print("ISO7816 APDU-Level Test Suite")
-    print("Smart Card Protocol Compliance Tests")
-    print("=" * 60)
-    
+@pytest.fixture(scope="module")
+def connection():
+    """Create a connection to the smart card reader."""
     r = readers()
-    
     if not r:
-        print("No smart card readers found")
-        return
-    
-    print("Found smart card readers:")
-    for i, sc in enumerate(r):
-        print(f"  [{i}] {sc}")
+        pytest.skip("No smart card readers found")
 
-    # Auto-select if only one reader
-    if len(r) == 1:
-        reader_index = 0
-        print(f"\nAuto-selecting reader [{reader_index}]")
-    else:
-        print("\nSelect reader index: ", end="")
-        reader_index = int(input())
+    # Find the Flipper CCID reader
+    reader = None
+    for sc in r:
+        if "USB Smart Card" in str(sc) or "Flipper" in str(sc):
+            reader = sc
+            break
 
-    if reader_index >= len(r):
-        print("Invalid reader index")
-        return
-    
-    connection = r[reader_index].createConnection()
-    connection.connect()
-    print(f"Connected to: {r[reader_index]}")
+    if reader is None:
+        reader = r[0]  # Use first available reader
 
-    print("\n[TEST] Basic APDU Commands")
-    test_apdu(
-        connection,
-        "INS 0x01 - No data exchange",
-        [0x01, 0x01, 0x00, 0x00],
-        0x90,
-        0x00,
-        [],
-    )
+    try:
+        conn = reader.createConnection()
+        conn.connect()
+        yield conn
+        conn.disconnect()
+    except (NoCardException, CardConnectionException) as e:
+        pytest.skip(f"Could not connect to card: {e}")
 
-    test_apdu(
-        connection,
-        "INS 0x02 - Response data (Le=2)",
-        [0x01, 0x02, 0x00, 0x00, 0x02],
-        0x90,
-        0x00,
-        [0x62, 0x63],
-    )
 
-    test_apdu(
-        connection,
-        "INS 0x03 - Command data (Lc=2)",
-        [0x01, 0x03, 0x00, 0x00, 0x02, 0xCA, 0xFE],
-        0x90,
-        0x00,
-        [],
-    )
+# =============================================================================
+# Helper Functions
+# =============================================================================
 
-    test_apdu(
-        connection,
-        "INS 0x04 - Echo data (Lc=2, Le=2)",
-        [0x01, 0x04, 0x00, 0x00, 0x02, 0xCA, 0xFE, 0x02],
-        0x90,
-        0x00,
-        [0xCA, 0xFE],
-    )
+def build_extended_apdu(cla: int, ins: int, p1: int, p2: int,
+                        data: list = None, le: int = None) -> list:
+    """Build an extended APDU (Case 4E format if data and le provided)."""
+    apdu = [cla, ins, p1, p2]
 
-    print("\n[TEST] Buffer Size Tests")
-    small_apdu = list(range(0, 0x0F))
-    test_apdu(
-        connection,
-        "INS 0x04 - Small buffer (15 bytes)",
-        [0x01, 0x04, 0x00, 0x00, 0x0F] + small_apdu + [0x0F],
-        0x90,
-        0x00,
-        small_apdu,
-    )
+    if data is not None:
+        lc = len(data)
+        lc_hi = (lc >> 8) & 0xFF
+        lc_lo = lc & 0xFF
+        apdu.extend([0x00, lc_hi, lc_lo])  # Extended Lc
+        apdu.extend(data)
 
-    upper_bound = 0xF0
-    max_apdu = list(range(0, upper_bound))
-    test_apdu(
-        connection,
-        f"INS 0x04 - Large buffer ({upper_bound} bytes)",
-        [0x01, 0x04, 0x00, 0x00, upper_bound] + max_apdu + [upper_bound],
-        0x90,
-        0x00,
-        max_apdu,
-    )
+    if le is not None:
+        le_hi = (le >> 8) & 0xFF
+        le_lo = le & 0xFF
+        if data is None:
+            apdu.append(0x00)  # Extended Le marker for Case 2E
+        apdu.extend([le_hi, le_lo])
 
-    # Extended APDU tests
-    print("\n[TEST] Extended APDU Tests")
-    
-    # Case 2E: Extended Le only (no data, expect response)
-    # Format: CLA INS P1 P2 00 Le1 Le2
-    # We request 256 bytes (0x0100) - but INS 0x02 only returns 2 bytes
-    test_apdu(
-        connection,
-        "INS 0x02 - Extended Le (Case 2E)",
-        [0x01, 0x02, 0x00, 0x00, 0x00, 0x01, 0x00],  # Le = 0x0100 = 256
-        0x90,
-        0x00,
-        [0x62, 0x63],  # Still only returns 2 bytes
-    )
-    
-    # Case 4E: Extended Lc and Le (data in, data out)
-    # Format: CLA INS P1 P2 00 Lc1 Lc2 Data... Le1 Le2
-    extended_data_len = 300  # > 255, requires extended APDU
-    extended_data = [(i % 256) for i in range(extended_data_len)]
-    
-    lc_hi = (extended_data_len >> 8) & 0xFF
-    lc_lo = extended_data_len & 0xFF
-    le_hi = (extended_data_len >> 8) & 0xFF
-    le_lo = extended_data_len & 0xFF
-    
-    test_apdu(
-        connection,
-        f"INS 0x04 - Extended APDU echo ({extended_data_len} bytes, Case 4E)",
-        [0x01, 0x04, 0x00, 0x00, 0x00, lc_hi, lc_lo] + extended_data + [le_hi, le_lo],
-        0x90,
-        0x00,
-        extended_data,
-    )
-    
-    # Test with 512 bytes - well within our 2048 limit
-    extended_data_len = 512
-    extended_data = [(i % 256) for i in range(extended_data_len)]
-    
-    lc_hi = (extended_data_len >> 8) & 0xFF
-    lc_lo = extended_data_len & 0xFF
-    le_hi = (extended_data_len >> 8) & 0xFF
-    le_lo = extended_data_len & 0xFF
-    
-    test_apdu(
-        connection,
-        f"INS 0x04 - Extended APDU echo ({extended_data_len} bytes)",
-        [0x01, 0x04, 0x00, 0x00, 0x00, lc_hi, lc_lo] + extended_data + [le_hi, le_lo],
-        0x90,
-        0x00,
-        extended_data,
-    )
+    return apdu
 
-    # Print summary
-    total = passed + failed
-    print("\n" + "=" * 60)
-    print(f"Test Summary: {passed}/{total} passed, {failed} failed")
-    if failed == 0:
-        print("All tests passed! ✅")
-    else:
-        print(f"{failed} test(s) failed ❌")
 
+# =============================================================================
+# Basic APDU Tests
+# =============================================================================
+
+class TestBasicAPDU:
+    """Test basic APDU command cases."""
+
+    def test_case1_no_data(self, connection):
+        """Case 1: No data, no response (4 bytes: CLA INS P1 P2)."""
+        data, sw1, sw2 = connection.transmit([0x01, 0x01, 0x00, 0x00])
+        assert sw1 == 0x90, f"Expected SW1=90, got {sw1:02X}"
+        assert sw2 == 0x00, f"Expected SW2=00, got {sw2:02X}"
+        assert len(data) == 0, f"Expected no data, got {len(data)} bytes"
+
+    def test_case2_response_only(self, connection):
+        """Case 2S: No data, response expected (5 bytes: CLA INS P1 P2 Le)."""
+        data, sw1, sw2 = connection.transmit([0x01, 0x02, 0x00, 0x00, 0x02])
+        assert sw1 == 0x90, f"Expected SW1=90, got {sw1:02X}"
+        assert sw2 == 0x00, f"Expected SW2=00, got {sw2:02X}"
+        assert data == [0x62, 0x63], f"Expected [0x62, 0x63], got {data}"
+
+    def test_case3_command_only(self, connection):
+        """Case 3S: Data, no response (5+Lc bytes: CLA INS P1 P2 Lc Data)."""
+        data, sw1, sw2 = connection.transmit(
+            [0x01, 0x03, 0x00, 0x00, 0x02, 0xCA, 0xFE]
+        )
+        assert sw1 == 0x90, f"Expected SW1=90, got {sw1:02X}"
+        assert sw2 == 0x00, f"Expected SW2=00, got {sw2:02X}"
+        assert len(data) == 0, f"Expected no data, got {len(data)} bytes"
+
+    def test_case4_echo(self, connection):
+        """Case 4S: Data with response (6+Lc bytes: CLA INS P1 P2 Lc Data Le)."""
+        data, sw1, sw2 = connection.transmit(
+            [0x01, 0x04, 0x00, 0x00, 0x02, 0xCA, 0xFE, 0x02]
+        )
+        assert sw1 == 0x90, f"Expected SW1=90, got {sw1:02X}"
+        assert sw2 == 0x00, f"Expected SW2=00, got {sw2:02X}"
+        assert data == [0xCA, 0xFE], f"Expected [0xCA, 0xFE], got {data}"
+
+
+# =============================================================================
+# Buffer Size Tests
+# =============================================================================
+
+class TestBufferSizes:
+    """Test various buffer sizes for short APDUs."""
+
+    def test_small_buffer_15_bytes(self, connection):
+        """Echo 15 bytes of data."""
+        test_data = list(range(0x0F))
+        apdu = [0x01, 0x04, 0x00, 0x00, 0x0F] + test_data + [0x0F]
+        data, sw1, sw2 = connection.transmit(apdu)
+
+        assert sw1 == 0x90, f"Expected SW1=90, got {sw1:02X}"
+        assert sw2 == 0x00, f"Expected SW2=00, got {sw2:02X}"
+        assert data == test_data, "Echo data mismatch"
+
+    def test_large_buffer_240_bytes(self, connection):
+        """Echo 240 bytes of data (near short APDU limit)."""
+        test_data = list(range(0xF0))
+        apdu = [0x01, 0x04, 0x00, 0x00, 0xF0] + test_data + [0xF0]
+        data, sw1, sw2 = connection.transmit(apdu)
+
+        assert sw1 == 0x90, f"Expected SW1=90, got {sw1:02X}"
+        assert sw2 == 0x00, f"Expected SW2=00, got {sw2:02X}"
+        assert data == test_data, "Echo data mismatch"
+
+
+# =============================================================================
+# Extended APDU Tests
+# =============================================================================
+
+class TestExtendedAPDU:
+    """Test extended APDU support (>255 bytes)."""
+
+    def test_case2e_extended_le(self, connection):
+        """Case 2E: Extended Le only (7 bytes: CLA INS P1 P2 00 Le1 Le2)."""
+        # Request 256 bytes but INS 0x02 only returns 2 bytes
+        apdu = [0x01, 0x02, 0x00, 0x00, 0x00, 0x01, 0x00]  # Le = 0x0100 = 256
+        data, sw1, sw2 = connection.transmit(apdu)
+
+        assert sw1 == 0x90, f"Expected SW1=90, got {sw1:02X}"
+        assert sw2 == 0x00, f"Expected SW2=00, got {sw2:02X}"
+        assert data == [0x62, 0x63], f"Expected [0x62, 0x63], got {data}"
+
+    def test_case4e_echo_300_bytes(self, connection):
+        """Case 4E: Extended Lc and Le with 300 bytes."""
+        test_data = [(i % 256) for i in range(300)]
+        apdu = build_extended_apdu(0x01, 0x04, 0x00, 0x00, test_data, 300)
+        data, sw1, sw2 = connection.transmit(apdu)
+
+        assert sw1 == 0x90, f"Expected SW1=90, got {sw1:02X}"
+        assert sw2 == 0x00, f"Expected SW2=00, got {sw2:02X}"
+        assert data == test_data, "Echo data mismatch for 300 bytes"
+
+    def test_case4e_echo_512_bytes(self, connection):
+        """Case 4E: Extended Lc and Le with 512 bytes."""
+        test_data = [(i % 256) for i in range(512)]
+        apdu = build_extended_apdu(0x01, 0x04, 0x00, 0x00, test_data, 512)
+        data, sw1, sw2 = connection.transmit(apdu)
+
+        assert sw1 == 0x90, f"Expected SW1=90, got {sw1:02X}"
+        assert sw2 == 0x00, f"Expected SW2=00, got {sw2:02X}"
+        assert data == test_data, "Echo data mismatch for 512 bytes"
+
+    def test_case4e_echo_1000_bytes(self, connection):
+        """Case 4E: Extended Lc and Le with 1000 bytes."""
+        test_data = [(i % 256) for i in range(1000)]
+        apdu = build_extended_apdu(0x01, 0x04, 0x00, 0x00, test_data, 1000)
+        data, sw1, sw2 = connection.transmit(apdu)
+
+        assert sw1 == 0x90, f"Expected SW1=90, got {sw1:02X}"
+        assert sw2 == 0x00, f"Expected SW2=00, got {sw2:02X}"
+        assert data == test_data, "Echo data mismatch for 1000 bytes"
+
+
+# =============================================================================
+# Main (for direct execution)
+# =============================================================================
 
 if __name__ == "__main__":
-    main()
+    pytest.main([__file__, "-v"])
