@@ -14,7 +14,26 @@ This document provides a comprehensive analysis of the USB CCID (Chip Card Inter
 
 ### Core Implementation
 - `targets/f7/furi_hal/furi_hal_usb_ccid.c` - Main HAL implementation
-- `targets/furi_hal_include/furi_hal_usb_cc### Changelog
+- `targets/furi_hal_include/furi_hal_usb_ccid.h` - Public HAL interface
+- `lib/libusb_stm32/inc/usb_ccid.h` - CCID protocol definitions
+
+### Test Application
+- `applications/debug/ccid_test/ccid_test_app.c` - Test application
+- `applications/debug/ccid_test/iso7816/` - ISO7816 protocol handlers
+- `applications/debug/ccid_test/client/ccid_test.py` - CCID protocol test client
+- `applications/debug/ccid_test/client/iso7816_test.py` - ISO7816 APDU test client
+
+---
+
+## Changelog
+
+### December 14, 2025 - Message Validation
+- ✅ **Added message length validation** - prevents buffer overflows
+- ✅ **Added reserved field (RFU) validation** - returns BAD_ABRFU errors
+- ✅ **Added minimum message size checks** - validates complete message received
+- ✅ **Created comprehensive test suites**:
+  - `ccid_test.py` - 44 CCID protocol-level tests
+  - `iso7816_test.py` - 6 ISO7816 APDU-level tests
 
 ### December 14, 2025 - Major Update
 - ✅ **Added all 28 standard CCID error codes** to `usb_ccid.h`
@@ -42,13 +61,210 @@ This document provides a comprehensive analysis of the USB CCID (Chip Card Inter
 - Test application with Python client
 - Missing handlers caused host software to hang
 
-### Future Enhancements (Proposed)lic HAL interface
-- `lib/libusb_stm32/inc/usb_ccid.h` - CCID protocol definitions
+---
 
-### Test Application
-- `applications/debug/ccid_test/ccid_test_app.c` - Test application
-- `applications/debug/ccid_test/iso7816/` - ISO7816 protocol handlers
+## ISO7816 Module Analysis
 - `applications/debug/ccid_test/client/ccid_client.py` - Python test client
+
+---
+
+## ISO7816 Module Analysis
+
+The ISO7816 implementation provides smart card protocol support as defined in ISO/IEC 7816-3 and 7816-4.
+
+### Module Files
+
+| File | Purpose | Status |
+|------|---------|--------|
+| `iso7816_atr.h` | ATR structure definition | ⚠️ Minimal |
+| `iso7816_response.h` | Response status codes | ⚠️ Partial |
+| `iso7816_response.c` | Sets SW1/SW2 response | ✅ Working |
+| `iso7816_t0_apdu.h` | T=0 APDU structures | ✅ Working |
+| `iso7816_t0_apdu.c` | APDU parsing/writing | ⚠️ Short APDU only |
+| `iso7816_handler.h` | Handler type/interface | ❌ **Missing** |
+| `iso7816_handler.c` | Handler implementation | ❌ **Missing** |
+
+### Missing Handler Module
+
+The `ccid_test_app.c` references a handler module that does not exist:
+
+```c
+#include "iso7816/iso7816_handler.h"
+// ...
+app->iso7816_handler = iso7816_handler_alloc();
+app->iso7816_handler->iso7816_answer_to_reset = iso7816_answer_to_reset;
+app->iso7816_handler->iso7816_process_command = iso7816_process_command;
+// ...
+iso7816_handler_set_usb_ccid_callbacks();
+iso7816_handler_free(app->iso7816_handler);
+```
+
+**Expected Functions** (not implemented):
+- `iso7816_handler_alloc()` - Allocate handler context
+- `iso7816_handler_free()` - Free handler context
+- `iso7816_handler_set_usb_ccid_callbacks()` - Register with CCID HAL
+- `iso7816_handler_reset_usb_ccid_callbacks()` - Unregister from CCID HAL
+
+### ATR Implementation (`iso7816_atr.h`)
+
+**Current Structure** (2 bytes only):
+```c
+typedef struct {
+    uint8_t TS;  // Initial character (0x3B = direct, 0x3F = inverse)
+    uint8_t T0;  // Format byte
+} Iso7816Atr;
+```
+
+**Missing per ISO 7816-3**:
+
+| Component | Description | Status |
+|-----------|-------------|--------|
+| TS | Initial character | ✅ Present |
+| T0 | Format byte | ✅ Present |
+| TA1-TAn | Interface bytes (clock rate, Fi/Di) | ❌ Missing |
+| TB1-TBn | Interface bytes (voltage, current) | ❌ Missing |
+| TC1-TCn | Interface bytes (guard time, WI) | ❌ Missing |
+| TD1-TDn | Interface bytes (protocol type) | ❌ Missing |
+| T1-T15 | Historical bytes (app info) | ❌ Missing |
+| TCK | Check byte | ❌ Missing |
+
+**Proposed Enhanced Structure**:
+```c
+typedef struct {
+    uint8_t TS;                    // Initial character
+    uint8_t T0;                    // Format byte (Y1 nibble + K)
+    uint8_t interface_bytes[32];   // TA, TB, TC, TD bytes
+    uint8_t interface_bytes_len;   // Number of interface bytes
+    uint8_t historical_bytes[15];  // Historical bytes (max 15)
+    uint8_t historical_bytes_len;  // Number of historical bytes (K from T0)
+    uint8_t TCK;                   // Check byte (XOR of T0 to TCK-1)
+    bool has_tck;                  // True if TCK is present
+} Iso7816Atr;
+```
+
+### Response Codes (`iso7816_response.h`)
+
+**Currently Defined** (7 codes):
+```c
+#define ISO7816_RESPONSE_OK                        0x9000
+#define ISO7816_RESPONSE_WRONG_LENGTH              0x6700
+#define ISO7816_RESPONSE_WRONG_PARAMETERS_P1_P2    0x6A00
+#define ISO7816_RESPONSE_WRONG_LE                  0x6C00
+#define ISO7816_RESPONSE_INSTRUCTION_NOT_SUPPORTED 0x6D00
+#define ISO7816_RESPONSE_CLASS_NOT_SUPPORTED       0x6E00
+#define ISO7816_RESPONSE_INTERNAL_EXCEPTION        0x6F00
+```
+
+**Missing per ISO 7816-4**:
+
+| Category | Code Range | Examples | Status |
+|----------|------------|----------|--------|
+| Normal processing | `0x9000` | Success | ✅ Present |
+| Warning - NV unchanged | `0x62xx` | Data may be corrupted | ❌ Missing |
+| Warning - NV changed | `0x63xx` | Counter reached | ❌ Missing |
+| Execution error - NV unchanged | `0x64xx` | Memory failure | ❌ Missing |
+| Execution error - NV changed | `0x65xx` | Write error | ❌ Missing |
+| Security errors | `0x6982-6984` | Security not satisfied | ❌ Missing |
+| Wrong length | `0x6700` | Lc/Le error | ✅ Present |
+| Function not supported | `0x68xx` | Logical channel error | ❌ Missing |
+| Command not allowed | `0x69xx` | Command incompatible | ❌ Missing |
+| Wrong parameters | `0x6Axx` | Incorrect P1-P2 | ✅ Partial |
+| Wrong Le | `0x6Cxx` | Expected length | ✅ Present |
+| Instruction not supported | `0x6D00` | Unknown INS | ✅ Present |
+| Class not supported | `0x6E00` | Unknown CLA | ✅ Present |
+| Internal error | `0x6F00` | Unspecified error | ✅ Present |
+
+### APDU Parsing (`iso7816_t0_apdu.c`)
+
+**Current Capabilities**:
+- ✅ Case 1: No data, no response (4 bytes: CLA INS P1 P2)
+- ✅ Case 2: No data, response expected (5 bytes: CLA INS P1 P2 Le)
+- ✅ Case 3: Data, no response (5+Lc bytes: CLA INS P1 P2 Lc Data)
+- ✅ Case 4: Data with response (6+Lc bytes: CLA INS P1 P2 Lc Data Le)
+- ⚠️ Short APDU only (Lc/Le max 255)
+
+**Missing per ISO 7816-4**:
+
+| Feature | Description | Status |
+|---------|-------------|--------|
+| Extended APDU | Lc/Le up to 65535 | ❌ Missing |
+| Extended Le=0x0000 | Means 65536 | ❌ Missing |
+| 3-byte Lc encoding | 0x00 + 2-byte length | ❌ Missing |
+| Command chaining | CLA bit 4 set | ❌ Missing |
+| Secure messaging | CLA bits 2-3 | ❌ Missing |
+| Logical channels | CLA bits 0-1 | ❌ Missing |
+
+**Proposed Extended APDU Parsing**:
+```c
+// Extended APDU detection (first Lc byte = 0x00)
+if(pc_to_reader_datablock_len > 5 && pc_to_reader_datablock[4] == 0x00) {
+    // Extended Lc: bytes 5-6 contain actual length
+    command->Lc = (pc_to_reader_datablock[5] << 8) | pc_to_reader_datablock[6];
+    // Extended Le would be last 2 bytes if present
+}
+```
+
+### Test Commands (`ccid_test_app_commands.c`)
+
+**Currently Implemented** (CLA=0x01, custom test class):
+
+| INS | Description | Command | Response |
+|-----|-------------|---------|----------|
+| 0x01 | No-op | `01 01 00 00` | SW=9000 |
+| 0x02 | Get 2 bytes | `01 02 00 00 02` | Data=`62 63`, SW=9000 |
+| 0x03 | Send 2 bytes | `01 03 00 00 02 CA FE` | SW=9000 |
+| 0x04 | Echo data | `01 04 00 00 Lc Data Le` | Data echoed, SW=9000 |
+
+**Missing Standard Commands**:
+
+| CLA | INS | Name | Description | Status |
+|-----|-----|------|-------------|--------|
+| 0x00 | 0xA4 | SELECT | Select file/application | ❌ Missing |
+| 0x00 | 0xB0 | READ BINARY | Read binary data | ❌ Missing |
+| 0x00 | 0xB2 | READ RECORD | Read record data | ❌ Missing |
+| 0x00 | 0xCA | GET DATA | Get data object | ❌ Missing |
+| 0x00 | 0xC0 | GET RESPONSE | Get remaining response data | ❌ Missing |
+| 0x00 | 0x20 | VERIFY | Verify PIN | ❌ Missing |
+| 0x00 | 0x84 | GET CHALLENGE | Get random number | ❌ Missing |
+
+### ISO7816 Implementation Priorities
+
+#### 🔴 High Priority
+
+1. **Create Missing Handler Module**
+   - Implement `iso7816_handler.h` and `iso7816_handler.c`
+   - Bridge between CCID HAL and ISO7816 processing
+   - Required for `ccid_test_app.c` to compile
+
+2. **Enhance ATR Structure**
+   - Support variable-length ATR
+   - Add interface bytes parsing
+   - Calculate TCK checksum
+   - Allow application-specific historical bytes
+
+3. **Add More Response Codes**
+   - Security status codes (`0x69xx`)
+   - File not found (`0x6A82`)
+   - Wrong data (`0x6A80`)
+
+#### 🟡 Medium Priority
+
+4. **Extended APDU Support**
+   - Parse 3-byte Lc encoding
+   - Handle extended Le
+   - Larger buffer allocation
+
+5. **Standard Commands**
+   - Implement SELECT (0xA4)
+   - Implement GET RESPONSE (0xC0)
+   - Basic file system emulation
+
+#### 🟢 Low Priority
+
+6. **Advanced Features**
+   - Command chaining
+   - Secure messaging
+   - Logical channels
 
 ---
 
@@ -292,38 +508,42 @@ void iso7816_answer_to_reset(Iso7816Atr* atr) {
 - TCK checksum
 - Protocol negotiation info
 
-### 8. Missing Message Validation
+### 8. Message Validation
 
-The current worker implementation lacks validation for:
+**Status**: ✅ Implemented (Dec 2025)
 
-#### Sequence Number Tracking
+The following validation is now performed for all incoming CCID messages:
+
+#### ✅ Minimum Message Size Check
+- Validates that received data is at least as large as the expected message structure
+- Returns `CCID_ERROR_BAD_LENGTH` if insufficient data
+
+#### ✅ Length Field Validation  
+- Validates `dwLength` doesn't exceed buffer capacity
+- Prevents buffer overflow attacks
+- Returns `CCID_ERROR_BAD_LENGTH` if length is invalid
+
+#### ✅ Reserved Field Validation
+- Checks `abRFU` (Reserved for Future Use) bytes are zero
+- Returns `CCID_ERROR_BAD_ABRFU_2B` or `CCID_ERROR_BAD_ABRFU_3B` if non-zero
+
+#### ⚠️ Not Yet Implemented
+
+**Sequence Number Tracking**:
 ```c
-// No validation of bSeq field
-// Should track and increment sequence numbers
+// bSeq is echoed but not tracked for continuity
 ```
 
-#### Chain Parameter Support
+**Chain Parameter Support**:
 ```c
 // bChainParameter always set to 0
 // Multi-block transfers not supported
 ```
 
-#### BWI (Block Waiting Integer)
+**BWI (Block Waiting Integer)**:
 ```c
 // bBWI field ignored
 // No timeout calculation based on BWI
-```
-
-#### Length Validation
-```c
-// Limited validation of dwLength fields
-// Could lead to buffer overruns
-```
-
-#### Reserved Field Validation
-```c
-// abRFU fields not checked for zero values
-// Should return BAD_ABRFU_* errors
 ```
 
 ### 9. Incomplete Multi-Slot Support
@@ -492,16 +712,53 @@ struct pc_to_rdr_xfr_block* receivedXfrBlock =
 
 ---
 
-## Testing Gaps
+## Testing
 
-### Current Testing
-- ✅ Basic APDU exchange (Python client)
-- ✅ Card insertion/removal
+### Running the Test Application
+
+```bash
+# Build and launch the CCID test app on Flipper Zero
+./fbt launch APPSRC=applications/debug/ccid_test
+```
+
+The test app will activate USB CCID mode with VID/PID `076B:3A21`.
+
+### Running Test Clients
+
+```bash
+cd applications/debug/ccid_test/client
+
+# Create virtual environment and install dependencies
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+
+# Run CCID protocol-level tests (requires root for USB access)
+sudo .venv/bin/python3 ccid_test.py
+
+# Run ISO7816 APDU-level tests (uses PC/SC)
+.venv/bin/python3 iso7816_test.py
+```
+
+### Test Suites
+
+| Test Suite | Description | Tests |
+|------------|-------------|-------|
+| `ccid_test.py` | Raw USB CCID protocol tests | 44 tests |
+| `iso7816_test.py` | PC/SC APDU-level tests | 6 tests |
+
+### Current Test Coverage
+- ✅ All PC_to_RDR message types
+- ✅ All control requests
+- ✅ Error handling for unsupported commands
+- ✅ Invalid slot number handling
+- ✅ Sequence number echoing
+- ✅ Power on/off cycles
+- ✅ Basic APDU exchange
 - ✅ Short APDU tests (up to 0xF0 bytes)
 
 ### Missing Test Coverage
-- ❌ Error condition testing
-- ❌ Invalid message handling
+- ❌ Message validation edge cases (bad length, invalid RFU)
 - ❌ Boundary condition testing
 - ❌ Protocol parameter negotiation
 - ❌ Multi-message sequences
@@ -612,11 +869,68 @@ Would require:
 ### Future Enhancements (Proposed)
 - ~~Complete message handler implementation~~ ✅ DONE
 - ~~Comprehensive error code support~~ ✅ DONE
+- ~~Message validation (length, RFU fields)~~ ✅ DONE
 - Interrupt endpoint for notifications (optional but recommended)
 - T=1 protocol support
 - Extended APDU support
 - Improved ATR generation
-- Enhanced validation and error handling
+
+---
+
+## Testing
+
+### Running the Tests
+
+#### 1. Flash firmware and launch the test app:
+```bash
+# Build and flash firmware
+./fbt flash_usb_full
+
+# Wait for update to complete (~45 seconds), then launch test app
+./fbt launch APPSRC=applications/debug/ccid_test
+```
+
+#### 2. Set up the Python test environment:
+```bash
+cd applications/debug/ccid_test/client
+
+# Create virtual environment
+python3 -m venv .venv
+source .venv/bin/activate
+
+# Install dependencies
+pip install -r requirements.txt
+```
+
+#### 3. Run the CCID protocol tests (requires root for USB access):
+```bash
+sudo .venv/bin/python3 ccid_test.py
+```
+
+#### 4. Run the ISO7816 APDU tests:
+```bash
+.venv/bin/python3 iso7816_test.py
+```
+
+### Test Coverage
+
+| Test Suite | Tests | Description |
+|------------|-------|-------------|
+| `ccid_test.py` | 44 | Raw USB CCID protocol tests (pyusb) |
+| `iso7816_test.py` | 6 | APDU-level tests via PC/SC (pyscard) |
+
+### CCID Tests Include:
+- ✅ PC_TO_RDR_ICCPOWERON
+- ✅ PC_TO_RDR_ICCPOWEROFF  
+- ✅ PC_TO_RDR_GETSLOTSTATUS
+- ✅ PC_TO_RDR_GETPARAMETERS
+- ✅ PC_TO_RDR_RESETPARAMETERS
+- ✅ PC_TO_RDR_SETPARAMETERS
+- ✅ Sequence number handling
+- ✅ Power on/off cycles
+- ✅ Invalid slot error handling
+- ✅ Unsupported command error responses
+- ✅ Control requests (GET_CLOCK_FREQUENCIES, GET_DATA_RATES)
 
 ---
 

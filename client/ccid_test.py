@@ -71,8 +71,11 @@ CCID_COMMANDSTATUS_TIMEEXTENSION = 0x80
 # Error Codes
 CCID_ERROR_NOERROR = 0x00
 CCID_ERROR_CMD_NOT_SUPPORTED = 0x01
+CCID_ERROR_BAD_LENGTH = 0x02
 CCID_ERROR_BAD_SLOT = 0x05
 CCID_ERROR_SLOTNOTFOUND = 0x05
+CCID_ERROR_BAD_ABRFU_3B = 0x0A
+CCID_ERROR_BAD_ABRFU_2B = 0x0D
 
 # Control Requests
 CCID_ABORT = 0x01
@@ -871,6 +874,177 @@ def test_power_cycle(tester: CCIDTester):
 
 
 # =============================================================================
+# Validation Tests - Message Length and RFU Field Validation
+# =============================================================================
+
+def test_validation_icc_power_on_rfu(tester: CCIDTester):
+    """Test PC_to_RDR_IccPowerOn with non-zero RFU bytes."""
+    print("\n[TEST] Validation - IccPowerOn RFU")
+    
+    # Build IccPowerOn with non-zero RFU bytes (should fail validation)
+    # Header: msg_type(1) + length(4) + slot(1) + seq(1) + reserved(1) = 8 bytes
+    # Body: power_select(1) + abRFU(2) = 3 bytes
+    header = struct.pack('<BIBBB', PC_TO_RDR_ICCPOWERON, 0, 0, tester.next_seq(), 0)
+    body = struct.pack('<BBB', 0, 0xFF, 0xFF)  # power_select=0, abRFU=non-zero
+    msg = header + body
+    
+    resp = tester.send_receive(msg)
+    if resp:
+        tester.test("IccPowerOn bad RFU - Command failed",
+                    resp["command_status"] == CCID_COMMANDSTATUS_FAILED,
+                    f"Status: {resp['command_status_name']}")
+        tester.test("IccPowerOn bad RFU - Error is BAD_ABRFU_2B",
+                    resp["error"] == CCID_ERROR_BAD_ABRFU_2B,
+                    f"Error: 0x{resp['error']:02X}")
+
+
+def test_validation_get_slot_status_rfu(tester: CCIDTester):
+    """Test PC_to_RDR_GetSlotStatus with non-zero RFU bytes."""
+    print("\n[TEST] Validation - GetSlotStatus RFU")
+    
+    # Build GetSlotStatus with non-zero RFU bytes
+    header = struct.pack('<BIBBB', PC_TO_RDR_GETSLOTSTATUS, 0, 0, tester.next_seq(), 0)
+    body = struct.pack('<BBB', 0x01, 0x02, 0x03)  # abRFU=non-zero
+    msg = header + body
+    
+    resp = tester.send_receive(msg)
+    if resp:
+        tester.test("GetSlotStatus bad RFU - Command failed",
+                    resp["command_status"] == CCID_COMMANDSTATUS_FAILED,
+                    f"Status: {resp['command_status_name']}")
+        tester.test("GetSlotStatus bad RFU - Error is BAD_ABRFU_3B",
+                    resp["error"] == CCID_ERROR_BAD_ABRFU_3B,
+                    f"Error: 0x{resp['error']:02X}")
+
+
+def test_validation_icc_power_off_rfu(tester: CCIDTester):
+    """Test PC_to_RDR_IccPowerOff with non-zero RFU bytes."""
+    print("\n[TEST] Validation - IccPowerOff RFU")
+    
+    # Build IccPowerOff with non-zero RFU bytes
+    header = struct.pack('<BIBBB', PC_TO_RDR_ICCPOWEROFF, 0, 0, tester.next_seq(), 0)
+    body = struct.pack('<BBB', 0xAA, 0xBB, 0xCC)  # abRFU=non-zero
+    msg = header + body
+    
+    resp = tester.send_receive(msg)
+    if resp:
+        tester.test("IccPowerOff bad RFU - Command failed",
+                    resp["command_status"] == CCID_COMMANDSTATUS_FAILED,
+                    f"Status: {resp['command_status_name']}")
+        tester.test("IccPowerOff bad RFU - Error is BAD_ABRFU_3B",
+                    resp["error"] == CCID_ERROR_BAD_ABRFU_3B,
+                    f"Error: 0x{resp['error']:02X}")
+
+
+def test_validation_get_parameters_rfu(tester: CCIDTester):
+    """Test PC_to_RDR_GetParameters with non-zero RFU bytes."""
+    print("\n[TEST] Validation - GetParameters RFU")
+    
+    # Build GetParameters with non-zero RFU bytes
+    header = struct.pack('<BIBBB', PC_TO_RDR_GETPARAMETERS, 0, 0, tester.next_seq(), 0)
+    body = struct.pack('<BBB', 0x11, 0x22, 0x33)  # abRFU=non-zero
+    msg = header + body
+    
+    resp = tester.send_receive(msg)
+    if resp:
+        tester.test("GetParameters bad RFU - Command failed",
+                    resp["command_status"] == CCID_COMMANDSTATUS_FAILED,
+                    f"Status: {resp['command_status_name']}")
+        tester.test("GetParameters bad RFU - Error is BAD_ABRFU_3B",
+                    resp["error"] == CCID_ERROR_BAD_ABRFU_3B,
+                    f"Error: 0x{resp['error']:02X}")
+
+
+def test_validation_reset_parameters_rfu(tester: CCIDTester):
+    """Test PC_to_RDR_ResetParameters with non-zero RFU bytes."""
+    print("\n[TEST] Validation - ResetParameters RFU")
+    
+    # Build ResetParameters with non-zero RFU bytes
+    header = struct.pack('<BIBBB', PC_TO_RDR_RESETPARAMETERS, 0, 0, tester.next_seq(), 0)
+    body = struct.pack('<BBB', 0xDE, 0xAD, 0xBE)  # abRFU=non-zero
+    msg = header + body
+    
+    resp = tester.send_receive(msg)
+    if resp:
+        tester.test("ResetParameters bad RFU - Command failed",
+                    resp["command_status"] == CCID_COMMANDSTATUS_FAILED,
+                    f"Status: {resp['command_status_name']}")
+        tester.test("ResetParameters bad RFU - Error is BAD_ABRFU_3B",
+                    resp["error"] == CCID_ERROR_BAD_ABRFU_3B,
+                    f"Error: 0x{resp['error']:02X}")
+
+
+def test_validation_set_parameters_rfu(tester: CCIDTester):
+    """Test PC_to_RDR_SetParameters with non-zero RFU bytes."""
+    print("\n[TEST] Validation - SetParameters RFU")
+    
+    # Build SetParameters with non-zero RFU bytes
+    # SetParameters T=0 has: header + bProtocolNum(1) + abRFU(2) + T0 params(5)
+    param_len = 5
+    header = struct.pack('<BIBBB', PC_TO_RDR_SETPARAMETERS, param_len, 0, tester.next_seq(), 0)
+    body = struct.pack('<BBB', 0x00, 0xFF, 0xFF)  # bProtocolNum=0, abRFU=non-zero
+    params = struct.pack('<BBBBB', 0x11, 0x00, 0x0A, 0x00, 0x00)  # T=0 params
+    msg = header + body + params
+    
+    resp = tester.send_receive(msg)
+    if resp:
+        tester.test("SetParameters bad RFU - Command failed",
+                    resp["command_status"] == CCID_COMMANDSTATUS_FAILED,
+                    f"Status: {resp['command_status_name']}")
+        tester.test("SetParameters bad RFU - Error is BAD_ABRFU_2B",
+                    resp["error"] == CCID_ERROR_BAD_ABRFU_2B,
+                    f"Error: 0x{resp['error']:02X}")
+
+
+def test_validation_xfr_block_length_overflow(tester: CCIDTester):
+    """Test PC_to_RDR_XfrBlock with dwLength exceeding buffer capacity."""
+    print("\n[TEST] Validation - XfrBlock Length Overflow")
+    
+    # CCID_DATABLOCK_SIZE = 4 + 1 + 255 + 1 = 261 bytes max
+    # Send a message claiming dwLength > 261 but with no actual data
+    # This should be rejected immediately based on header validation
+    header = struct.pack('<BIBBB', PC_TO_RDR_XFRBLOCK, 0xFFFF, 0, tester.next_seq(), 0)
+    body = struct.pack('<BBB', 0, 0, 0)  # bBWI + wLevelParameter
+    msg = header + body
+    
+    resp = tester.send_receive(msg)
+    if resp:
+        tester.test("XfrBlock overflow - Command failed",
+                    resp["command_status"] == CCID_COMMANDSTATUS_FAILED,
+                    f"Status: {resp['command_status_name']}")
+        tester.test("XfrBlock overflow - Error is BAD_LENGTH",
+                    resp["error"] == CCID_ERROR_BAD_LENGTH,
+                    f"Error: 0x{resp['error']:02X}")
+
+
+def test_validation_xfr_block_valid_large(tester: CCIDTester):
+    """Test PC_to_RDR_XfrBlock with valid large data (multi-packet USB transfer)."""
+    print("\n[TEST] Validation - XfrBlock Large Data")
+    
+    # First power on the ICC to ensure it's active
+    msg = build_icc_power_on(slot=0, seq=tester.next_seq())
+    resp = tester.send_receive(msg)
+    
+    # Send a valid XfrBlock with data that spans multiple USB packets
+    # USB endpoint size is 64 bytes, so 200 bytes of APDU should span 4 packets
+    # APDU: CLA=01, INS=04 (echo), P1=00, P2=00, Lc=C8 (200), data, Le=C8
+    data_len = 200
+    apdu_data = bytes(range(data_len))
+    apdu = bytes([0x01, 0x04, 0x00, 0x00, data_len]) + apdu_data + bytes([data_len])
+    
+    msg = build_xfr_block(slot=0, seq=tester.next_seq(), data=apdu)
+    resp = tester.send_receive(msg)
+    
+    if resp:
+        tester.test("XfrBlock large data - Response received",
+                    resp["msg_type"] == RDR_TO_PC_DATABLOCK,
+                    f"Type: {resp['msg_type_name']}")
+        tester.test("XfrBlock large data - Command succeeded",
+                    resp["command_status"] == CCID_COMMANDSTATUS_NOERROR,
+                    f"Status: {resp['command_status_name']}")
+
+
+# =============================================================================
 # Main
 # =============================================================================
 
@@ -919,6 +1093,16 @@ def main():
         # Control request tests
         test_control_get_clock_frequencies(tester)
         test_control_get_data_rates(tester)
+        
+        # Message validation tests
+        test_validation_icc_power_on_rfu(tester)
+        test_validation_get_slot_status_rfu(tester)
+        test_validation_icc_power_off_rfu(tester)
+        test_validation_get_parameters_rfu(tester)
+        test_validation_reset_parameters_rfu(tester)
+        test_validation_set_parameters_rfu(tester)
+        test_validation_xfr_block_length_overflow(tester)
+        test_validation_xfr_block_valid_large(tester)
         
         tester.print_summary()
         
