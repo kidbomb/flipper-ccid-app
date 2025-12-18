@@ -24,6 +24,7 @@ PIV_TAG_CERT_PIV_AUTH = [0x5F, 0xC1, 0x05]
 PIV_TAG_CERT_CARD_AUTH = [0x5F, 0xC1, 0x01]
 PIV_TAG_FINGERPRINTS = [0x5F, 0xC1, 0x03]
 PIV_TAG_PRINTED_INFO = [0x5F, 0xC1, 0x09]
+PIV_TAG_SECURITY_OBJECT = [0x5F, 0xC1, 0x06]
 
 # Status words
 SW_OK = [0x90, 0x00]
@@ -249,18 +250,18 @@ class TestPivGetDataErrors:
 class TestPivGetDataNotImplemented:
     """Test GET DATA for containers that are not yet implemented."""
     
-    def test_get_piv_auth_cert_not_implemented(self, piv_selected):
-        """PIV Authentication Certificate - not yet implemented."""
-        cmd = build_get_data_cmd(PIV_TAG_CERT_PIV_AUTH)
+    def test_get_fingerprints_not_implemented(self, piv_selected):
+        """Fingerprints container - not yet implemented."""
+        cmd = build_get_data_cmd(PIV_TAG_FINGERPRINTS)
         response, sw1, sw2 = piv_selected.transmit(cmd)
         
         # Should return file not found (not implemented yet)
         assert [sw1, sw2] == SW_FILE_NOT_FOUND, \
             f"Expected 6A82, got {sw1:02X} {sw2:02X}"
     
-    def test_get_fingerprints_not_implemented(self, piv_selected):
-        """Fingerprints container - not yet implemented."""
-        cmd = build_get_data_cmd(PIV_TAG_FINGERPRINTS)
+    def test_get_security_object_not_implemented(self, piv_selected):
+        """Security Object container - not yet implemented."""
+        cmd = build_get_data_cmd(PIV_TAG_SECURITY_OBJECT)
         response, sw1, sw2 = piv_selected.transmit(cmd)
         
         # Should return file not found (not implemented yet)

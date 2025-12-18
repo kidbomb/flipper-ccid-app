@@ -8,6 +8,7 @@
 
 #include "piv_data.h"
 #include "piv_app.h"
+#include "piv_cert.h"
 #include <furi.h>
 #include <string.h>
 
@@ -232,6 +233,19 @@ bool piv_data_get_by_tag(
                 piv_containers[i].name, piv_containers[i].data_len);
             return true;
         }
+    }
+    
+    // Check if this is a certificate tag
+    if(piv_cert_is_cert_tag(tag)) {
+        if(piv_cert_get_by_tag(tag, data, data_len)) {
+            if(requires_pin) {
+                // Certificates are always readable without PIN (via contact interface)
+                *requires_pin = false;
+            }
+            return true;
+        }
+        // Certificate tag recognized but not present
+        return false;
     }
     
     FURI_LOG_W(TAG, "Container not found for tag 0x%06lX", (unsigned long)tag);

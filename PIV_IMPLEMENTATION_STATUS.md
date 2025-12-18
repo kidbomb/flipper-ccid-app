@@ -21,14 +21,33 @@ This document tracks the implementation status of the NIST SP 800-73-5 PIV (Pers
 | PIV PIN Management | ✅ Complete | 20 | CHANGE REF DATA, RESET RETRY |
 | PIV PUK Management | ✅ Complete | 5 | Unblocking key support |
 | Cryptographic Operations | ✅ Complete | 15 | GENERAL AUTHENTICATE (ECC P-256) |
-| Certificate Storage | ❌ Not Started | 0 | X.509 certificates |
+| Certificate Storage | ✅ Complete | 16 | X.509 for PIV Auth & Card Auth |
 | PUT DATA | ❌ Not Started | 0 | Admin provisioning |
 
-**Total Tests**: 109 (103 pytest + 6 standalone)
+**Total Tests**: 135 (119 pytest + 16 cert tests)
 
 ---
 
 ## Changelog
+
+### December 18, 2025 - Phase 5: Certificate Storage
+
+- ✅ **X.509 Certificate for PIV Authentication (0x5FC105)**: Demo ECC P-256 cert
+- ✅ **X.509 Certificate for Card Authentication (0x5FC101)**: Demo ECC P-256 cert
+- ✅ **PIV Container Format**: Tag 53 with 70 (cert), 71 (info), FE (LRC)
+- ✅ **Certificate Info Byte**: Compression indicator (uncompressed)
+- ✅ **Integrated with GET DATA (INS=0xCB)**: Certificates retrievable via BER-TLV tag
+- ✅ **No PIN required**: Certificates readable without authentication (contact interface)
+- ✅ **16 new tests** in `piv_cert_test.py`
+
+**Files Created**:
+- `piv/piv_cert.h` - Certificate container definitions and function declarations
+- `piv/piv_cert.c` - Demo X.509 certificates (~360 lines)
+- `client/piv_cert_test.py` - Certificate test suite (16 tests)
+
+**Files Modified**:
+- `piv/piv_data.c` - Integrated certificate lookup into GET DATA
+- `piv/piv_app.c` - Initialize certificate module on startup
 
 ### December 18, 2025 - Phase 4: Cryptographic Operations
 

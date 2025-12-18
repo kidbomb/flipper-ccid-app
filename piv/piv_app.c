@@ -9,6 +9,7 @@
 #include "piv_data.h"
 #include "piv_pin.h"
 #include "piv_crypto.h"
+#include "piv_cert.h"
 #include "../iso7816/iso7816_response.h"
 #include "../iso7816/iso7816_t0_apdu.h"
 #include <furi.h>
@@ -243,6 +244,9 @@ Iso7816File* piv_app_init(Iso7816FileSystem* fs) {
     
     // Initialize PIV crypto (keys and mbedTLS)
     piv_crypto_init();
+    
+    // Initialize PIV certificates
+    piv_cert_init();
     
     // Register PIV application with the file system
     // This creates a DF under MF with the PIV AID
