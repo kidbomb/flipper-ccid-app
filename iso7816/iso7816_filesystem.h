@@ -169,6 +169,9 @@ typedef struct {
     Iso7816File* current_df;   /**< Currently selected DF */
     Iso7816File* current_ef;   /**< Currently selected EF (if any) */
     
+    /** Default app to handle commands when no app is explicitly selected */
+    Iso7816File* default_app;
+    
     /** Response buffer for GET RESPONSE */
     uint8_t* response_buffer;
     uint16_t response_len;
@@ -345,10 +348,26 @@ bool iso7816_fs_select_parent(Iso7816FileSystem* fs);
 bool iso7816_fs_select_mf(Iso7816FileSystem* fs);
 
 /**
- * @brief Get the currently selected application
+ * @brief Set the default application
+ * 
+ * The default app handles commands when no application is explicitly selected.
+ * This is useful for PIV cards where the PIV applet should handle commands
+ * even before an explicit SELECT AID is received.
  * 
  * @param fs File system
- * @return Currently selected application definition, or NULL
+ * @param app_df The DF representing the default application (must have an app definition)
+ * @return true if default app was set successfully
+ */
+bool iso7816_fs_set_default_app(Iso7816FileSystem* fs, Iso7816File* app_df);
+
+/**
+ * @brief Get the currently selected application
+ * 
+ * Returns the app definition for the current context. If no app is explicitly
+ * selected, returns the default app if one is configured.
+ * 
+ * @param fs File system
+ * @return Currently selected application definition, or default app, or NULL
  */
 const Iso7816AppDefinition* iso7816_fs_get_current_app(Iso7816FileSystem* fs);
 

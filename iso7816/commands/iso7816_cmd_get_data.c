@@ -246,7 +246,9 @@ void iso7816_cmd_get_data(
     // INS=0xCB (odd) with tag list in data is delegated to application handler
     if(command->INS == ISO7816_INS_GET_DATA_ODD) {
         // Check if there's a selected application that can handle this
+        // (includes default app if no explicit selection)
         const Iso7816AppDefinition* app = iso7816_fs_get_current_app(fs);
+        
         if(app && app->handler) {
             FURI_LOG_D(TAG, "GET DATA (INS=CB) delegated to app: %s", app->name);
             app->handler(app->context, command, response);

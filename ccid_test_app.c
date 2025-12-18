@@ -124,6 +124,12 @@ CcidTestApp* ccid_test_app_alloc(void) {
     app->piv_app_df = piv_app_init(fs);
     if(app->piv_app_df) {
         FURI_LOG_I("CCID", "PIV application registered");
+        
+        // Set PIV as the default application
+        // This allows PIV commands to work even before explicit SELECT AID
+        if(iso7816_fs_set_default_app(fs, app->piv_app_df)) {
+            FURI_LOG_I("CCID", "PIV set as default application");
+        }
     } else {
         FURI_LOG_E("CCID", "Failed to register PIV application");
     }

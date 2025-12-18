@@ -559,6 +559,80 @@ void ccid_test_app_init(void) {
 
 ## Testing Strategy
 
+### External Tool Testing (OpenSC)
+
+The PIV implementation is compatible with OpenSC tools, which provide industry-standard PIV testing.
+
+#### Installation
+
+```bash
+# Debian/Ubuntu
+sudo apt-get install opensc opensc-pkcs11
+
+# Fedora/RHEL
+sudo dnf install opensc
+```
+
+#### piv-tool
+
+`piv-tool` is the primary tool for PIV card testing:
+
+```bash
+# Identify the card
+piv-tool -n
+# Output: Personal Identity Verification Card
+
+# Send raw APDU - Discovery Object
+piv-tool -s 00:CB:3F:FF:03:5C:01:7E:00
+# Returns: 7E 12 4F 0B A0 00 00 03 08 00 00 10 00 01 00 5F 2F 02 40 00
+
+# Send raw APDU - CHUID
+piv-tool -s 00:CB:3F:FF:05:5C:03:5F:C1:02:00
+
+# Send raw APDU - Card Capability Container
+piv-tool -s 00:CB:3F:FF:05:5C:03:5F:C1:07:00
+
+# Verify PIN
+piv-tool -s 00:20:00:80:08:31:32:33:34:35:36:FF:FF
+```
+
+#### pkcs11-tool
+
+`pkcs11-tool` provides PKCS#11 interface testing:
+
+```bash
+# List available slots
+pkcs11-tool --module /usr/lib/x86_64-linux-gnu/opensc-pkcs11.so -L
+# Output: PIV_II token on slot 0
+
+# List all objects
+pkcs11-tool --module /usr/lib/x86_64-linux-gnu/opensc-pkcs11.so -O
+
+# Login and list objects
+pkcs11-tool --module /usr/lib/x86_64-linux-gnu/opensc-pkcs11.so --login --pin 123456 -O
+
+# Get token info
+pkcs11-tool --module /usr/lib/x86_64-linux-gnu/opensc-pkcs11.so -I
+```
+
+#### pkcs15-tool
+
+`pkcs15-tool` provides detailed PKCS#15 card information:
+
+```bash
+# Full card dump
+pkcs15-tool -D
+
+# List PINs
+pkcs15-tool --list-pins
+
+# List certificates
+pkcs15-tool --list-certificates
+
+# Read certificate by ID
+pkcs15-tool --read-certificate 1
+```
+
 ### Test Categories
 
 #### 1. Application Selection Tests

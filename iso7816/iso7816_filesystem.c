@@ -458,6 +458,32 @@ bool iso7816_fs_select_mf(Iso7816FileSystem* fs) {
     return iso7816_fs_select(fs, fs->mf);
 }
 
+bool iso7816_fs_set_default_app(Iso7816FileSystem* fs, Iso7816File* app_df) {
+    furi_assert(fs);
+    
+    if(app_df == NULL) {
+        // Clear default app
+        fs->default_app = NULL;
+        return true;
+    }
+    
+    // Verify that the DF has an app definition
+    if(!app_df->app) {
+        FURI_LOG_E(TAG, "Cannot set default app: DF has no app definition");
+        return false;
+    }
+    
+    // Verify it's a DF
+    if(!iso7816_file_is_df(app_df)) {
+        FURI_LOG_E(TAG, "Cannot set default app: not a DF");
+        return false;
+    }
+    
+    fs->default_app = app_df;
+    FURI_LOG_I(TAG, "Default app set: %s", app_df->app->name ? app_df->app->name : "unnamed");
+    return true;
+}
+
 const Iso7816AppDefinition* iso7816_fs_get_current_app(Iso7816FileSystem* fs) {
     furi_assert(fs);
     
@@ -468,6 +494,11 @@ const Iso7816AppDefinition* iso7816_fs_get_current_app(Iso7816FileSystem* fs) {
             return df->app;
         }
         df = df->parent;
+    }
+    
+    // No app in current hierarchy - return default app if set
+    if(fs->default_app && fs->default_app->app) {
+        return fs->default_app->app;
     }
     
     return NULL;

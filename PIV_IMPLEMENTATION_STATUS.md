@@ -30,6 +30,19 @@ This document tracks the implementation status of the NIST SP 800-73-5 PIV (Pers
 
 ## Changelog
 
+### December 18, 2025 - OpenSC Compatibility & Default App
+
+- ✅ **Default Application Mechanism**: PIV is now the default app for OpenSC compatibility
+- ✅ **piv-tool Compatibility**: Raw APDU commands work correctly
+- ✅ **pkcs11-tool Compatibility**: Token recognized, objects listed
+- ✅ **pkcs15-tool Compatibility**: Full card dump works
+- ✅ **iso7816_fs_set_default_app()**: New filesystem API for setting default app
+
+**Architecture Changes**:
+- Added `default_app` pointer to `Iso7816FileSystem`
+- `iso7816_fs_get_current_app()` returns default app when none selected
+- PIV app set as default during initialization
+
 ### December 18, 2025 - Phase 5: Certificate Storage
 
 - ✅ **X.509 Certificate for PIV Authentication (0x5FC105)**: Demo ECC P-256 cert
@@ -175,14 +188,123 @@ piv/
 | VERIFY | 0x20 | 0x00 | 0x00 | ref | ✅ Complete | PIN ref 0x80, PUK ref 0x81 |
 | CHANGE REFERENCE DATA | 0x24 | 0x00 | 0x00 | ref | ✅ Complete | PIN/PUK change |
 | RESET RETRY COUNTER | 0x2C | 0x00 | 0x00 | ref | ✅ Complete | Unblock with PUK |
+| GENERAL AUTHENTICATE | 0x87 | 0x00 | alg | key | ✅ Complete | ECC P-256 signing |
 
 ### Pending Commands
 
 | Command | INS | CLA | Priority | Description |
 |---------|-----|-----|----------|-------------|
-| GENERAL AUTHENTICATE | 0x87 | 0x00 | High | Cryptographic operations |
 | PUT DATA | 0xDB | 0x00 | Medium | Store data objects |
 | GENERATE ASYMMETRIC KEY PAIR | 0x47 | 0x00 | Low | On-card key generation |
+
+---
+
+## OpenSC Compatibility Implementation Status
+
+### Overview
+
+The PIV implementation is designed to be fully compatible with **OpenSC** (Open Smart Card) tools, which are the industry-standard open-source tools for smart card access.
+
+**Tested OpenSC Version**: 0.25.0~rc1
+
+### Compatibility Features
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Card Detection | ✅ Working | Identified as "Personal Identity Verification Card" |
+| Discovery Object | ✅ Working | Returns PIV AID + PIN policy before SELECT |
+| CHUID Retrieval | ✅ Working | Demo FASC-N and GUID |
+| CCC Retrieval | ✅ Working | GSC-IS 2.0 compatible |
+| Certificate Retrieval | ✅ Working | PIV Auth & Card Auth certs |
+| PIN Verification | ✅ Working | 6-8 digit numeric PIN |
+| PUK Unblocking | ✅ Working | 8 digit PUK |
+| PKCS#11 Interface | ✅ Working | Token enumeration and object listing |
+| PKCS#15 Emulation | ✅ Working | Full card dump supported |
+
+### Default Application Mechanism
+
+**Problem**: OpenSC's PIV driver calls `piv_find_discovery()` to read the Discovery Object **before** selecting the PIV AID. Standard ISO 7816 cards require explicit application selection first.
+
+**Solution**: Implemented a **default application** mechanism:
+- PIV is registered as the default app in `iso7816_fs_set_default_app()`
+- `iso7816_fs_get_current_app()` returns the default app when none is explicitly selected
+- Commands are routed to PIV even before `SELECT A0 00 00 03 08...`
+
+**Implementation**:
+```c
+// In iso7816_filesystem.h
+void iso7816_fs_set_default_app(Iso7816FileSystem* fs, const Iso7816AppDefinition* app);
+
+// In ccid_test_app.c - set PIV as default during initialization
+iso7816_fs_set_default_app(filesystem, piv_get_app_definition());
+```
+
+### Tool-Specific Compatibility
+
+#### piv-tool
+
+| Test | Command | Status |
+|------|---------|--------|
+| Card identification | `piv-tool -n` | ✅ Pass |
+| Raw APDU - Discovery | `piv-tool -s 00:CB:3F:FF:03:5C:01:7E:00` | ✅ Pass |
+| Raw APDU - CHUID | `piv-tool -s 00:CB:3F:FF:05:5C:03:5F:C1:02:00` | ✅ Pass |
+| Raw APDU - CCC | `piv-tool -s 00:CB:3F:FF:05:5C:03:5F:C1:07:00` | ✅ Pass |
+| Raw APDU - PIV Auth Cert | `piv-tool -s 00:CB:3F:FF:05:5C:03:5F:C1:05:00` | ✅ Pass |
+| PIN Verify | `piv-tool -s 00:20:00:80:08:31:32:33:34:35:36:FF:FF` | ✅ Pass |
+
+#### pkcs11-tool
+
+| Test | Command | Status |
+|------|---------|--------|
+| List slots | `pkcs11-tool --module opensc-pkcs11.so -L` | ✅ Pass |
+| List objects | `pkcs11-tool --module opensc-pkcs11.so -O` | ✅ Pass |
+| Token info | `pkcs11-tool --module opensc-pkcs11.so -I` | ✅ Pass |
+| Login with PIN | `pkcs11-tool --module opensc-pkcs11.so --login --pin 123456 -O` | ✅ Pass |
+
+**Token Information Displayed**:
+```
+token label        : PIV_II
+token manufacturer : piv_II
+token model        : PKCS#15 emulated
+token flags        : login required, rng, token initialized, PIN initialized
+pin min/max        : 4/8
+```
+
+#### pkcs15-tool
+
+| Test | Command | Status |
+|------|---------|--------|
+| Full dump | `pkcs15-tool -D` | ✅ Pass |
+| List PINs | `pkcs15-tool --list-pins` | ✅ Pass |
+| List certificates | `pkcs15-tool --list-certificates` | ✅ Pass |
+| Read certificate | `pkcs15-tool --read-certificate 1` | ✅ Pass |
+
+**Objects Detected**:
+- PIN (ref 0x80) - 10 tries remaining
+- PUK (ref 0x81) - 10 tries remaining  
+- Card Capability Container
+- Card Holder Unique Identifier
+- X.509 Certificate for PIV Authentication
+- X.509 Certificate for Card Authentication
+- Discovery Object
+- Security Object (stub)
+
+### Known Limitations
+
+| Limitation | Impact | Workaround |
+|------------|--------|------------|
+| Demo certificates only | Not for production use | Generate real certs with OpenSSL |
+| Single test key | Same key for all slots | Implement key generation |
+| No PUT DATA | Cannot provision card | Manual data in source code |
+| No RSA support | ECC P-256 only | Add RSA if needed |
+
+### Future OpenSC Compatibility Work
+
+- [ ] Support `sc_pkcs15emu_piv_init()` full initialization
+- [ ] Add Printed Information object
+- [ ] Add Key History object
+- [ ] Implement cryptographic operations via PKCS#11
+- [ ] Add signature verification tests with OpenSSL
 
 ---
 
@@ -274,6 +396,77 @@ python app_select_test.py
 # Run CCID protocol tests (requires root)
 sudo .venv/bin/python3 ccid_test.py
 ```
+
+---
+
+## External Tool Compatibility
+
+### OpenSC Tools
+
+The PIV implementation is compatible with OpenSC tools (version 0.25+).
+
+**Installation (Debian/Ubuntu)**:
+```bash
+sudo apt-get install opensc opensc-pkcs11
+```
+
+### piv-tool
+
+`piv-tool` can identify the card and send raw APDUs:
+
+```bash
+# Identify the card
+piv-tool -n
+# Output: Personal Identity Verification Card
+
+# Send raw APDU for Discovery Object
+piv-tool -s 00:CB:3F:FF:03:5C:01:7E:00
+# Returns Discovery Object with PIV AID
+
+# Send raw APDU for CHUID
+piv-tool -s 00:CB:3F:FF:05:5C:03:5F:C1:02:00
+```
+
+### pkcs11-tool
+
+`pkcs11-tool` can list slots, objects, and perform operations:
+
+```bash
+# List available slots
+pkcs11-tool --module /usr/lib/x86_64-linux-gnu/opensc-pkcs11.so -L
+# Shows: PIV_II token with PIN initialized
+
+# List objects on the card
+pkcs11-tool --module /usr/lib/x86_64-linux-gnu/opensc-pkcs11.so -O
+# Shows: CCC, CHUID, Discovery Object, Certificates, etc.
+
+# Test login with PIN
+pkcs11-tool --module /usr/lib/x86_64-linux-gnu/opensc-pkcs11.so --login --pin 123456 -O
+```
+
+### pkcs15-tool
+
+`pkcs15-tool` provides detailed PKCS#15 card information:
+
+```bash
+# Dump all card information
+pkcs15-tool -D
+# Shows: PIN info, PUK info, certificates, data objects
+
+# List certificates
+pkcs15-tool --list-certificates
+
+# Read a certificate
+pkcs15-tool --read-certificate 1
+```
+
+### Default Application Mechanism
+
+The PIV application is configured as the **default application** for the card. This means:
+
+- Commands are handled by PIV even before explicit AID selection
+- OpenSC's `piv_find_discovery()` works without prior SELECT
+- Compatible with NIST PIV Test Cards behavior
 
 ---
 
