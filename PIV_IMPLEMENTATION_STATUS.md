@@ -20,15 +20,36 @@ This document tracks the implementation status of the NIST SP 800-73-5 PIV (Pers
 | CHUID | ✅ Complete | 4 | FASC-N, GUID, expiration |
 | PIV PIN Management | ✅ Complete | 20 | CHANGE REF DATA, RESET RETRY |
 | PIV PUK Management | ✅ Complete | 5 | Unblocking key support |
-| Cryptographic Operations | ❌ Not Started | 0 | GENERAL AUTHENTICATE |
+| Cryptographic Operations | ✅ Complete | 15 | GENERAL AUTHENTICATE (ECC P-256) |
 | Certificate Storage | ❌ Not Started | 0 | X.509 certificates |
 | PUT DATA | ❌ Not Started | 0 | Admin provisioning |
 
-**Total Tests**: 94 (88 pytest + 6 standalone)
+**Total Tests**: 109 (103 pytest + 6 standalone)
 
 ---
 
 ## Changelog
+
+### December 18, 2025 - Phase 4: Cryptographic Operations
+
+- ✅ **GENERAL AUTHENTICATE (INS=0x87)**: Internal authenticate with ECC P-256
+- ✅ **Key References**: 0x9A (PIV Auth), 0x9C (Digital Sig), 0x9E (Card Auth)
+- ✅ **ECC P-256 signing**: ECDSA signatures using mbedTLS
+- ✅ **Dynamic Auth Template (0x7C)**: Challenge/Response protocol
+- ✅ **PIN protection**: Key 0x9E (Card Auth) works without PIN, others require PIN
+- ✅ **Demo test key**: Pre-generated P-256 key for testing
+- ✅ **15 new tests** in `piv_crypto_test.py`
+
+**Files Created**:
+- `piv/piv_keys.h` - Key reference definitions and storage structures
+- `piv/piv_keys.c` - Demo ECC P-256 key storage (~150 lines)
+- `piv/piv_crypto.h` - GENERAL AUTHENTICATE interface
+- `piv/piv_crypto.c` - Full crypto implementation (~400 lines)
+- `client/piv_crypto_test.py` - Crypto test suite (15 tests)
+
+**Files Modified**:
+- `piv/piv_app.c` - Route INS=0x87 to crypto handler
+- `application.fam` - Added mbedtls library dependency
 
 ### December 18, 2025 - Phase 3: PIV PIN Management
 

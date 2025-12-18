@@ -9,6 +9,7 @@ App(
     provides=[
         "ccid_test",
     ],
-    stack_size=1 * 1024,
+    stack_size=2 * 1024,
+    fap_libs=["mbedtls"],
     fap_category="Debug",
 )

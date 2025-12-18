@@ -8,6 +8,7 @@
 #include "piv_app.h"
 #include "piv_data.h"
 #include "piv_pin.h"
+#include "piv_crypto.h"
 #include "../iso7816/iso7816_response.h"
 #include "../iso7816/iso7816_t0_apdu.h"
 #include <furi.h>
@@ -176,8 +177,7 @@ static void piv_app_command_handler(
             break;
             
         case 0x87:  // GENERAL AUTHENTICATE
-            FURI_LOG_W(TAG, "GENERAL AUTHENTICATE not yet implemented");
-            iso7816_set_response(response, ISO7816_RESPONSE_FUNCTION_NOT_SUPPORTED);
+            piv_cmd_general_authenticate(piv_context.fs, command, response);
             break;
             
         case 0x24:  // CHANGE REFERENCE DATA
@@ -240,6 +240,9 @@ Iso7816File* piv_app_init(Iso7816FileSystem* fs) {
         FURI_LOG_E(TAG, "Failed to initialize PIV PINs");
         return NULL;
     }
+    
+    // Initialize PIV crypto (keys and mbedTLS)
+    piv_crypto_init();
     
     // Register PIV application with the file system
     // This creates a DF under MF with the PIV AID
