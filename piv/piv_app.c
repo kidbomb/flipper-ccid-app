@@ -7,6 +7,7 @@
 
 #include "piv_app.h"
 #include "piv_data.h"
+#include "piv_pin.h"
 #include "../iso7816/iso7816_response.h"
 #include "../iso7816/iso7816_t0_apdu.h"
 #include <furi.h>
@@ -59,6 +60,11 @@ static void piv_app_on_deselect(void* context) {
     piv_context.selected = false;
     piv_context.pin_verified = false;
     piv_context.security_status = 0;
+    
+    // Clear PIN verification in filesystem
+    if(piv_context.fs) {
+        piv_pin_clear_verification(piv_context.fs);
+    }
 }
 
 /**
@@ -175,13 +181,11 @@ static void piv_app_command_handler(
             break;
             
         case 0x24:  // CHANGE REFERENCE DATA
-            FURI_LOG_W(TAG, "CHANGE REFERENCE DATA not yet implemented");
-            iso7816_set_response(response, ISO7816_RESPONSE_FUNCTION_NOT_SUPPORTED);
+            piv_cmd_change_reference_data(piv_context.fs, command, response);
             break;
             
         case 0x2C:  // RESET RETRY COUNTER
-            FURI_LOG_W(TAG, "RESET RETRY COUNTER not yet implemented");
-            iso7816_set_response(response, ISO7816_RESPONSE_FUNCTION_NOT_SUPPORTED);
+            piv_cmd_reset_retry_counter(piv_context.fs, command, response);
             break;
             
         case 0x47:  // GENERATE ASYMMETRIC KEY PAIR
@@ -230,6 +234,12 @@ Iso7816File* piv_app_init(Iso7816FileSystem* fs) {
     
     // Initialize PIV data containers
     piv_data_init();
+    
+    // Initialize PIV PINs (PIN 0x80 and PUK 0x81)
+    if(!piv_pin_init(fs)) {
+        FURI_LOG_E(TAG, "Failed to initialize PIV PINs");
+        return NULL;
+    }
     
     // Register PIV application with the file system
     // This creates a DF under MF with the PIV AID

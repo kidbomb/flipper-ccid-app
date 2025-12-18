@@ -132,6 +132,9 @@ extern "C" {
 /** Wrong parameters - no information given */
 #define ISO7816_RESPONSE_WRONG_PARAMS_NO_INFO       0x6A00
 
+/** Incorrect data field parameters */
+#define ISO7816_RESPONSE_WRONG_DATA                 0x6A80
+
 /** Function not supported */
 #define ISO7816_RESPONSE_FUNCTION_NOT_SUPPORTED     0x6A81
 
