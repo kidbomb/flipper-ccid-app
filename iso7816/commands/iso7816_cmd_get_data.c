@@ -242,10 +242,17 @@ void iso7816_cmd_get_data(
     FURI_LOG_D(TAG, "GET DATA: P1=%02X P2=%02X (tag=%04X) Le=%d",
         command->P1, command->P2, tag, le);
     
-    // Only INS=0xCA (even) is supported for now
-    // INS=0xCB (odd) with tag list in data is not implemented
+    // Only INS=0xCA (even) is supported by base handler
+    // INS=0xCB (odd) with tag list in data is delegated to application handler
     if(command->INS == ISO7816_INS_GET_DATA_ODD) {
-        FURI_LOG_W(TAG, "GET DATA with tag list (INS=CB) not implemented");
+        // Check if there's a selected application that can handle this
+        const Iso7816AppDefinition* app = iso7816_fs_get_current_app(fs);
+        if(app && app->handler) {
+            FURI_LOG_D(TAG, "GET DATA (INS=CB) delegated to app: %s", app->name);
+            app->handler(app->context, command, response);
+            return;
+        }
+        FURI_LOG_W(TAG, "GET DATA with tag list (INS=CB) not supported - no app selected");
         iso7816_set_response(response, ISO7816_RESPONSE_FUNCTION_NOT_SUPPORTED);
         return;
     }

@@ -14,6 +14,10 @@
 
 #include "ccid_test_app_commands.h"
 
+// Applications
+#include "piv/piv_app.h"
+#include "apps/generic_app.h"
+
 typedef enum {
     EventTypeInput,
 } EventType;
@@ -24,6 +28,10 @@ typedef struct {
     Submenu* submenu;
     FuriHalUsbCcidConfig ccid_cfg;
     Iso7816Handler* iso7816_handler;
+    
+    // Registered applications
+    Iso7816File* piv_app_df;
+    Iso7816File* generic_app_df;
 } CcidTestApp;
 
 typedef struct {
@@ -51,6 +59,47 @@ static void ccid_test_submenu_callback(void* context, uint32_t index) {
     }
 }
 
+static void ccid_test_app_render_callback(Canvas* canvas, void* ctx) {
+    CcidTestApp* app = ctx;
+    canvas_clear(canvas);
+
+    canvas_set_font(canvas, FontPrimary);
+    canvas_draw_str(canvas, 0, 10, "CCID Test App");
+
+    canvas_set_font(canvas, FontSecondary);
+    
+    // Show registered applications
+    canvas_draw_str(canvas, 0, 25, "Applications:");
+    
+    if(app && app->piv_app_df) {
+        if(piv_app_is_selected()) {
+            canvas_draw_str(canvas, 8, 37, "> PIV (selected)");
+        } else {
+            canvas_draw_str(canvas, 8, 37, "  PIV");
+        }
+    }
+    
+    if(app && app->generic_app_df) {
+        if(generic_app_is_selected()) {
+            canvas_draw_str(canvas, 8, 49, "> TestApp (selected)");
+        } else {
+            canvas_draw_str(canvas, 8, 49, "  TestApp");
+        }
+    }
+
+    canvas_draw_str(canvas, 0, 63, "Hold [back] to exit");
+}
+
+static void ccid_test_app_input_callback(InputEvent* input_event, void* ctx) {
+    FuriMessageQueue* event_queue = ctx;
+
+    CcidTestAppEvent event;
+    event.type = EventTypeInput;
+    event.input = *input_event;
+    furi_message_queue_put(event_queue, &event, FuriWaitForever);
+
+}
+
 uint32_t ccid_test_exit(void* context) {
     UNUSED(context);
     return VIEW_NONE;
@@ -68,12 +117,37 @@ CcidTestApp* ccid_test_app_alloc(void) {
     app->iso7816_handler->iso7816_answer_to_reset = iso7816_answer_to_reset;
     app->iso7816_handler->iso7816_process_command = iso7816_process_command;
 
+    // Register applications with the ISO7816 file system
+    Iso7816FileSystem* fs = iso7816_handler_get_filesystem();
+    
+    // Register PIV application
+    app->piv_app_df = piv_app_init(fs);
+    if(app->piv_app_df) {
+        FURI_LOG_I("CCID", "PIV application registered");
+    } else {
+        FURI_LOG_E("CCID", "Failed to register PIV application");
+    }
+    
+    // Register generic test application
+    app->generic_app_df = generic_app_init(fs);
+    if(app->generic_app_df) {
+        FURI_LOG_I("CCID", "Generic test application registered");
+    } else {
+        FURI_LOG_E("CCID", "Failed to register generic test application");
+    }
+
     // Gui
     app->gui = furi_record_open(RECORD_GUI);
+
 
     // View dispatcher
     app->view_dispatcher = view_dispatcher_alloc();
     view_dispatcher_attach_to_gui(app->view_dispatcher, app->gui, ViewDispatcherTypeFullscreen);
+
+    //viewport
+    app->view_port = view_port_alloc();
+    gui_add_view_port(app->gui, app->view_port, GuiLayerFullscreen);
+    view_port_draw_callback_set(app->view_port, ccid_test_app_render_callback, app);
 
     // Views
     app->submenu = submenu_alloc();
