@@ -1,8 +1,7 @@
 #include <furi.h>
 #include <furi_hal_usb.h>
 
-#include <usb_ccid.h>
-
+#include "ccid_protocol.h"
 #include "ccid_usb.h"
 
 #define CCID_TAG "usb_ccid"
