@@ -11,6 +11,7 @@
 #include "piv_crypto.h"
 #include "piv_cert.h"
 #include "../iso7816/iso7816_response.h"
+#include "../iso7816/commands/iso7816_cmd_verify.h"
 #include "../iso7816/iso7816_t0_apdu.h"
 #include <furi.h>
 #include <string.h>
@@ -29,7 +30,6 @@ static const uint8_t piv_aid[] = {PIV_AID_BYTES};
 
 static PivAppContext piv_context = {
     .selected = false,
-    .pin_verified = false,
     .security_status = 0,
     .fs = NULL,
 };
@@ -47,8 +47,12 @@ static void piv_app_on_select(void* context) {
     FURI_LOG_I(TAG, "PIV Application SELECTED");
     
     piv_context.selected = true;
-    piv_context.pin_verified = false;  // Reset PIN state on each selection
     piv_context.security_status = 0;
+
+    // Selecting an application resets its security status (ISO7816-4 5.3.3)
+    if(piv_context.fs) {
+        piv_pin_clear_verification(piv_context.fs);
+    }
 }
 
 /**
@@ -60,7 +64,6 @@ static void piv_app_on_deselect(void* context) {
     FURI_LOG_I(TAG, "PIV Application DESELECTED");
     
     piv_context.selected = false;
-    piv_context.pin_verified = false;
     piv_context.security_status = 0;
     
     // Clear PIN verification in filesystem
@@ -123,8 +126,9 @@ static bool piv_handle_get_data(
         return true;
     }
     
-    // Check PIN if required
-    if(requires_pin && !piv_context.pin_verified) {
+    // Check PIN if required. The file system owns the verification state, since
+    // VERIFY is handled by the generic ISO7816 layer and never reaches this app.
+    if(requires_pin && !iso7816_is_pin_verified(piv_context.fs, PIV_PIN_REF)) {
         FURI_LOG_W(TAG, "GET DATA: PIN required for tag 0x%06lX", (unsigned long)tag);
         iso7816_set_response(response, ISO7816_RESPONSE_SECURITY_NOT_SATISFIED);
         return true;

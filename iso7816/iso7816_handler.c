@@ -114,11 +114,25 @@ static void iso7816_icc_power_on_callback(uint8_t* atr_data, uint32_t* atr_data_
 
     memcpy(atr_data, atr_buffer, sizeof(uint8_t) * (*atr_data_len));
     
-    // Reset to MF on power on
+    // A card reset clears the security status of every PIN (ISO7816-4 5.3.3)
     if(filesystem) {
+        iso7816_reset_pin_verification(filesystem);
+
+        // Reset to MF on power on
         iso7816_fs_select_mf(filesystem);
+
+        // If a default application is configured it is implicitly selected at
+        // reset, the same way a real card selects its default application after
+        // the ATR. Going through iso7816_fs_select() rather than just leaving it
+        // as a fallback in iso7816_fs_get_current_app() means on_select fires, so
+        // "default" and "selected" describe the same state.
+        if(filesystem->default_app) {
+            iso7816_fs_select(filesystem, filesystem->default_app);
+            FURI_LOG_I(TAG, "ICC Power On - ATR sent, default app selected");
+            return;
+        }
     }
-    
+
     FURI_LOG_I(TAG, "ICC Power On - ATR sent, MF selected");
 }
 

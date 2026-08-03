@@ -287,17 +287,23 @@ class TestGetDataSingleByteTag:
 class TestGetDataErrors:
     """Test GET DATA error conditions."""
 
-    def test_get_data_odd_ins_not_supported(self, connection):
-        """GET DATA with INS=CB (odd, tag list) should return 6A81."""
+    def test_get_data_odd_ins_delegated_to_app(self, connection):
+        """GET DATA with INS=CB (odd, tag list) is delegated to the selected app.
+
+        A default application is implicitly selected at reset, so the base
+        handler never answers 6A81 here; it hands INS=CB to that application.
+        PIV requires P1-P2 = 3F FF for its GET DATA, so P1-P2 = 0000 comes back
+        as 6A86. Only a card with no application at all would return 6A81.
+        """
         select_mf(connection)
-        
-        # INS=0xCB with tag list in data (not implemented)
+
+        # INS=0xCB with tag list in data, with P1-P2 PIV does not accept
         # APDU: 00 CB 00 00 03 5C 01 4F 00
         apdu = [0x00, 0xCB, 0x00, 0x00, 0x03, 0x5C, 0x01, 0x4F, 0x00]
         data, sw1, sw2 = transmit_and_log(connection, apdu, "GET DATA INS=CB")
-        
-        assert [sw1, sw2] == SW_FUNC_NOT_SUPPORTED, \
-            f"Expected 6A81, got {sw1:02X}{sw2:02X}"
+
+        assert [sw1, sw2] == SW_WRONG_P1P2, \
+            f"Expected 6A86, got {sw1:02X}{sw2:02X}"
 
     def test_get_data_proprietary_range(self, connection):
         """GET DATA in proprietary range (0100-01FF) returns 6A88 if not registered."""

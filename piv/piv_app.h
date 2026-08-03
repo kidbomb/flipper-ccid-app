@@ -51,9 +51,6 @@ typedef struct {
     /** Whether PIV app is currently selected */
     bool selected;
     
-    /** PIV Application PIN verified */
-    bool pin_verified;
-    
     /** Current security status */
     uint8_t security_status;
     

@@ -79,7 +79,6 @@ static void ccid_test_reset_card(CcidTestApp* app) {
     PivAppContext* piv = piv_app_get_context();
     if(piv) {
         piv->selected = false;
-        piv->pin_verified = false;
         piv->security_status = 0;
     }
 
