@@ -1,0 +1,13 @@
+# uFBT
+.ufbt/
+dist/
+build/
+
+# Python client
+client/.venv/
+__pycache__/
+*.pyc
+
+# Editors
+.vscode/
+.idea/
