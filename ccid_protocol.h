@@ -66,9 +66,16 @@ extern "C" {
 /** @} */
 
 /**\name CCID Error codes
+ * \details For a malformed command the error code is the offset of the
+ * offending byte within the Bulk-OUT message, per CCID 1.1 section 6.2.6.
  * @{ */
-#define CCID_ERROR_NOERROR      0
-#define CCID_ERROR_SLOTNOTFOUND 5
+#define CCID_ERROR_NOERROR            0
+#define CCID_ERROR_CMD_NOT_SUPPORTED  0x01
+#define CCID_ERROR_BAD_LENGTH         0x02
+#define CCID_ERROR_SLOTNOTFOUND       5
+#define CCID_ERROR_BAD_SLOT           0x05
+#define CCID_ERROR_BAD_ABRFU_3B       0x0A
+#define CCID_ERROR_BAD_ABRFU_2B       0x0D
 /** @} */
 
 /**\name USB CCID class-specific requests
