@@ -688,7 +688,7 @@ apdu = "00 CB 3F FF 05 5C 03 5F C1 03 00"
 ### Python Test Client Extension
 
 ```python
-# Add to client/iso7816_test.py
+# Add to tests/iso7816_test.py
 
 class PIVTest:
     """PIV-specific test utilities"""

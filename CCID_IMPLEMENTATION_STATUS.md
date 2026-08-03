@@ -20,8 +20,8 @@ This document provides a comprehensive analysis of the USB CCID (Chip Card Inter
 ### Test Application
 - `applications/debug/ccid_test/ccid_test_app.c` - Test application
 - `applications/debug/ccid_test/iso7816/` - ISO7816 protocol handlers
-- `applications/debug/ccid_test/client/ccid_test.py` - CCID protocol test client
-- `applications/debug/ccid_test/client/iso7816_test.py` - ISO7816 APDU test client
+- `applications/debug/ccid_test/tests/ccid_test.py` - CCID protocol test client
+- `applications/debug/ccid_test/tests/iso7816_test.py` - ISO7816 APDU test client
 
 ---
 

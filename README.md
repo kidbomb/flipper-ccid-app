@@ -44,12 +44,12 @@ success.
 An unknown instruction returns 6D 00. Any class other than 0x01 returns 6E 00.
 Wrong parameters return 6A 00, and a bad length returns 67 00.
 
-## Test client
+## Tests
 
-The client directory holds a PC/SC test script that runs through every supported
-APDU and reports pass or fail for each. It needs pyscard, listed in
-client/requirements.txt. Run it with the app open on the Flipper, and pick your
-Flipper from the list of readers it prints.
+The tests directory holds host-side suites that drive the app over USB while it
+runs on the Flipper, covering the CCID message layer, the ISO7816 APDU layer and
+the PIV application. See the readme in that directory for what each suite covers
+and how to run them.
 
 ## Notes
 

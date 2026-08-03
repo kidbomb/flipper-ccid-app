@@ -387,7 +387,7 @@ Iso7816FileSystem
 
 ### Python Test Suite
 
-Location: `client/`
+Location: `tests/`
 
 Run tests:
 ```bash
@@ -496,7 +496,7 @@ applications/debug/ccid_test/
 │       ├── iso7816_cmd_select.c     # SELECT command
 │       └── iso7816_cmd_select.h
 │
-├── client/
+├── tests/
 │   ├── select_test.py               # SELECT command tests
 │   ├── get_data_test.py             # GET DATA command tests
 │   └── .gitignore                   # Python cache exclusions

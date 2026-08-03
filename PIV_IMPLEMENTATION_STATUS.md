@@ -56,7 +56,7 @@ This document tracks the implementation status of the NIST SP 800-73-5 PIV (Pers
 **Files Created**:
 - `piv/piv_cert.h` - Certificate container definitions and function declarations
 - `piv/piv_cert.c` - Demo X.509 certificates (~360 lines)
-- `client/piv_cert_test.py` - Certificate test suite (16 tests)
+- `tests/piv_cert_test.py` - Certificate test suite (16 tests)
 
 **Files Modified**:
 - `piv/piv_data.c` - Integrated certificate lookup into GET DATA
@@ -77,7 +77,7 @@ This document tracks the implementation status of the NIST SP 800-73-5 PIV (Pers
 - `piv/piv_keys.c` - Demo ECC P-256 key storage (~150 lines)
 - `piv/piv_crypto.h` - GENERAL AUTHENTICATE interface
 - `piv/piv_crypto.c` - Full crypto implementation (~400 lines)
-- `client/piv_crypto_test.py` - Crypto test suite (15 tests)
+- `tests/piv_crypto_test.py` - Crypto test suite (15 tests)
 
 **Files Modified**:
 - `piv/piv_app.c` - Route INS=0x87 to crypto handler
@@ -96,7 +96,7 @@ This document tracks the implementation status of the NIST SP 800-73-5 PIV (Pers
 **Files Created**:
 - `piv/piv_pin.h` - PIV PIN definitions and function declarations
 - `piv/piv_pin.c` - Full implementation (~350 lines)
-- `client/piv_pin_test.py` - Comprehensive PIV PIN test suite
+- `tests/piv_pin_test.py` - Comprehensive PIV PIN test suite
 
 ### December 17, 2025 - Phase 2: PIV Data Containers
 
@@ -109,7 +109,7 @@ This document tracks the implementation status of the NIST SP 800-73-5 PIV (Pers
 **Files Created**:
 - `piv/piv_data.h` - PIV container definitions and tags
 - `piv/piv_data.c` - Demo data container implementations
-- `client/piv_get_data_test.py` - PIV GET DATA test suite
+- `tests/piv_get_data_test.py` - PIV GET DATA test suite
 
 ### December 17, 2025 - Phase 1: Multi-Application Architecture
 
@@ -533,7 +533,7 @@ applications/debug/ccid_test/
 │   └── piv_pin.h/c                 # PIN management
 ├── apps/
 │   └── generic_app.h/c             # Test application
-└── client/
+└── tests/
     ├── requirements.txt
     ├── ccid_test.py                # CCID protocol tests
     ├── iso7816_test.py             # APDU tests
