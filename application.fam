@@ -3,6 +3,9 @@ App(
     name="CCID",
     apptype=FlipperAppType.EXTERNAL,
     entry_point="ccid_test_app",
+    # Explicit, because the default "*.c*" glob also matches the .cpython-*.pyc
+    # files pytest leaves in client/__pycache__, which then break the link.
+    sources=["*.c"],
     requires=[
         "gui",
     ],
