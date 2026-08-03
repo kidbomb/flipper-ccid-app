@@ -217,7 +217,7 @@ static usbd_respond ccid_control(usbd_device* dev, usbd_ctlreq* req, usbd_rqc_ca
 typedef struct {
     bool connected;
     bool smartcard_inserted;
-    CcidCallbacks* callbacks[CCID_TOTAL_SLOTS];
+    CcidUsbCallbacks* callbacks[CCID_TOTAL_SLOTS];
     void* cb_ctx[CCID_TOTAL_SLOTS];
     FuriThread* ccid_thread;
     FuriSemaphore* ccid_semaphore;
@@ -246,7 +246,7 @@ static void* ccid_set_string_descr(char* str) {
 static void ccid_init(usbd_device* dev, FuriHalUsbInterface* intf, void* ctx) {
     UNUSED(intf);
 
-    FuriHalUsbCcidConfig* cfg = (FuriHalUsbCcidConfig*)ctx;
+    CcidUsbConfig* cfg = (CcidUsbConfig*)ctx;
 
     furi_check(ccid_usb == NULL);
     ccid_usb = malloc(sizeof(CcidUsb));
@@ -482,7 +482,7 @@ void ccid_usb_remove_smartcard(void) {
     furi_thread_flags_set(furi_thread_get_id(ccid_usb->ccid_thread), WorkerEvtRemoveSmartcard);
 }
 
-void ccid_usb_set_callbacks(CcidCallbacks* cb, void* context) {
+void ccid_usb_set_callbacks(CcidUsbCallbacks* cb, void* context) {
     furi_check(ccid_usb);
 
     ccid_usb->callbacks[CCID_SLOT_INDEX] = cb;

@@ -23,7 +23,7 @@ typedef struct {
     uint16_t pid;
     char manuf[32];
     char product[32];
-} FuriHalUsbCcidConfig;
+} CcidUsbConfig;
 
 typedef struct {
     void (*icc_power_on_callback)(uint8_t* dataBlock, uint32_t* dataBlockLen, void* context);
@@ -33,14 +33,14 @@ typedef struct {
         uint8_t* readerToPcDataBlock,
         uint32_t* readerToPcDataBlockLen,
         void* context);
-} CcidCallbacks;
+} CcidUsbCallbacks;
 
 /** Set CCID callbacks
  *
- * @param      cb       CcidCallbacks instance
+ * @param      cb       CcidUsbCallbacks instance
  * @param      context  The context for callbacks
  */
-void ccid_usb_set_callbacks(CcidCallbacks* cb, void* context);
+void ccid_usb_set_callbacks(CcidUsbCallbacks* cb, void* context);
 
 /** Insert Smart Card */
 void ccid_usb_insert_smartcard(void);

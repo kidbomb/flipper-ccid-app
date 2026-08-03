@@ -23,7 +23,7 @@ typedef struct {
     Gui* gui;
     ViewDispatcher* view_dispatcher;
     Submenu* submenu;
-    FuriHalUsbCcidConfig ccid_cfg;
+    CcidUsbConfig ccid_cfg;
     Iso7816Handler* iso7816_handler;
 } CcidTestApp;
 
