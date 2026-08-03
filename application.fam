@@ -1,14 +1,15 @@
 App(
     appid="ccid_test",
-    name="CCID Debug",
-    apptype=FlipperAppType.DEBUG,
+    name="CCID",
+    apptype=FlipperAppType.EXTERNAL,
     entry_point="ccid_test_app",
     requires=[
         "gui",
     ],
-    provides=[
-        "ccid_test",
-    ],
     stack_size=1 * 1024,
-    fap_category="Debug",
+    fap_category="USB",
+    fap_version="1.0",
+    fap_author="Filipe Rodrigues",
+    fap_description="Emulates a USB smart card reader (CCID) with an ISO7816 T=0 card",
+    fap_icon="ccid.png",
 )
