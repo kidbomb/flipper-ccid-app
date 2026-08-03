@@ -42,7 +42,7 @@ success.
   01 04 00 00 02 CA FE 02
 
 An unknown instruction returns 6D 00. Any class other than 0x01 returns 6E 00.
-Wrong parameters return 6B 00, and a bad length returns 67 00.
+Wrong parameters return 6A 00, and a bad length returns 67 00.
 
 ## Test client
 
